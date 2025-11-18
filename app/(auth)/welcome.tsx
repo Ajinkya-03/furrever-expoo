@@ -11,7 +11,6 @@ const welcome = () => {
   return (
     <ScreenWrapper>
       <View style={styles.container}>
-        {/* Login Button and Image */}
         <View>
           <TouchableOpacity onPress={()=> router.push('/(auth)/login')} style={styles.loginButton}>
             <Typo fontWeight={"700"} size={20}>Sign in </Typo>
@@ -24,7 +23,6 @@ const welcome = () => {
           />
         </View>
 
-        {/* Footer */}
         <View style={styles.footer}>
           <Animated.View
             entering={FadeIn.duration(1000).springify().damping(12)} style={{ alignItems: 'center' }}>
@@ -40,7 +38,6 @@ const welcome = () => {
               Get verified and authentic pets
             </Typo>
             <Animated.View entering={FadeInDown.duration(1000).delay(200).damping(20)} style={styles.buttonContainer}>
-              {/* Button */}
               <Button onPress={()=> router.push('/(auth)/register')}>
                 <Typo size={22} color={colors.background} fontWeight={"600"}>
                   Get Started
