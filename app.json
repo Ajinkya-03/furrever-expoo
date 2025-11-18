@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "furrever-expo",
-    "slug": "furrever-expo",
+    "name": "FurrEver",
+    "slug": "FurrEver",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "",
+    "icon": "./assets/Logo.png",
     "scheme": "furreverexpo",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,

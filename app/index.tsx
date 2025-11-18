@@ -1,16 +1,39 @@
-"use dom";
-import { Text, View } from "react-native";
-import React from "react";
-import "../global.css";
+import { View, Text, Image, StyleSheet } from 'react-native'
+import React, { useEffect } from 'react'
+import '@/global.css'
+import { colors } from '../constants/themes';
+import { useRouter } from 'expo-router';
 
-export default function Index() {
+const index = () => {
+  const router = useRouter();
+  useEffect(() => {
+    setTimeout(() => {
+      router.push("/(auth)/welcome")
+    }, 2000)
+
+  }, [])
+
   return (
-    <>
-      <View className="  ">
-        <Text className=" text-red-600 font-bold text-2xl">Welcome to furrever</Text>
-      </View>
-      
-    </>
-
-  );
+    <View style={styles.container}>
+      <Image resizeMode='contain' style={styles.logo}
+        source={require('../assets/Logo.png')} />
+    </View>
+  )
 }
+
+export default index
+
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  logo: {
+    aspectRatio: 1,
+    height: "40%",
+  }
+
+})
