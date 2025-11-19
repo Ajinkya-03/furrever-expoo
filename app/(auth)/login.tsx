@@ -4,22 +4,30 @@ import Input from "@/components/Input";
 import ScreenWrapper from "@/components/ScreenWrapper";
 import Typo from "@/components/Typo";
 import { colors, spacingX, spacingY } from "@/constants/themes";
+import { useAuth } from "@/contexts/AuthContext";
 import { verticalScale } from "@/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
+
 const Login = () => {
   const emailRef = useRef("");
   const passwordRef = useRef("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const { login: loginUser } = useAuth();
   const handleSubmit = async () => {
     if (!emailRef.current || !passwordRef.current) {
       Alert.alert("Login", "Please fill all the details");
       return;
     }
-    console.log("Login Attempt:", emailRef.current, passwordRef.current);
+    setIsLoading(true)
+    const res = await loginUser(emailRef.current, passwordRef.current)
+    setIsLoading(false)
+    if(!res.success){
+      Alert.alert('Login',res.msg)
+    }
   };
   return (
     <ScreenWrapper>
@@ -67,6 +75,7 @@ const Login = () => {
             loading={isLoading}
             onPress={handleSubmit}
             style={styles.loginButton}
+
           >
             <Typo fontWeight={"700"} color={colors.background} size={21}>
               Login
@@ -88,6 +97,7 @@ const Login = () => {
   );
 };
 export default Login;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

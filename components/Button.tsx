@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native'
 import React, { Children } from 'react'
 import { CustomButtonProps } from '@/types'
 import { colors, radius } from '@/constants/themes'
@@ -23,6 +23,7 @@ const Button = ({
         <TouchableOpacity onPress={onPress} style={[styles.button, style]}>
             {children}
         </TouchableOpacity>
+        
     )
 }
 

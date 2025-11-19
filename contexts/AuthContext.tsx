@@ -18,26 +18,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const router = useRouter()
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
-      if(firebaseUser){
+      console.log("firebase user: ", firebaseUser)
+      if (firebaseUser) {
         setUser({
           uid: firebaseUser?.uid,
           email: firebaseUser?.email,
           name: firebaseUser?.displayName,
         });
+        updateUserData(firebaseUser.uid)
         router.replace("/(tabs)")
       } else {
         setUser(null);
+        router.replace("/(auth)/welcome")
       }
     })
+    return () => unsub();
   }, [])
-
-
+  
   const login = async (email: string, password: string) => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
+      if (msg.includes("(auth/invalid-credential)")) msg = "Wrong credentials"
+      if (msg.includes("(auth/invalid-email)")) msg = "Please enter a valid email id"
       return { success: false, msg };
     }
   };
@@ -57,6 +62,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
+      if (msg.includes("(auth/email-already-in-use)")) msg = "This email already exists "
+      if (msg.includes("(auth/invalid-email)")) msg = "Please enter a valid email"
+      if (msg.includes("Password should be at least 6 characters (auth/weak-password)")) msg = "Please enter a strong password, minimum 6 characters"
       return { success: false, msg };
     }
   };
@@ -76,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     } catch (error: any) {
       let msg = error.message;
-      console.log("error: ", error);
+
     }
   };
 

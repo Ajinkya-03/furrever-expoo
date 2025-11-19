@@ -23,5 +23,4 @@ const Typo = ({
         </Text>
     )
 }
-
 export default Typo

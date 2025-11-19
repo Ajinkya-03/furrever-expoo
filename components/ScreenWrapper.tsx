@@ -3,7 +3,6 @@ import React from 'react'
 import { ScreenWrapperProps } from '@/types'
 import { colors } from '@/constants/themes'
 
-
 const { height } = Dimensions.get('window')
 
 const ScreenWrapper = ({ style, children }: ScreenWrapperProps) => {
@@ -19,5 +18,4 @@ const ScreenWrapper = ({ style, children }: ScreenWrapperProps) => {
         </View>
     )
 }
-
 export default ScreenWrapper
