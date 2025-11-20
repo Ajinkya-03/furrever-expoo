@@ -1,12 +1,5 @@
-import { Href } from "expo-router";
-import { Firestore, Timestamp } from "firebase/firestore";
-import { Icon } from "phosphor-react-native";
 import React, { ReactNode } from "react";
 import {
-  ActivityIndicator,
-  ActivityIndicatorProps,
-  ImageStyle,
-  PressableProps,
   TextInput,
   TextInputProps,
   TextProps,
@@ -24,11 +17,17 @@ export type TypoProps = {
   size?: number;
   color?: string;
   fontWeight?: TextStyle["fontWeight"];
-  children: React.ReactNode; 
+  children: React.ReactNode;
   style?: TextStyle | TextStyle[];
   textProps?: TextProps;
 };
 
+export type accountOptionType = {
+  title: string;
+  icon: React.ReactNode;
+  bgColor: string;
+  routeName?: any;
+};
 export type IconComponent = React.ComponentType<{
   height?: number;
   width?: number;
@@ -113,4 +112,10 @@ export type ResponseType = {
   success: boolean;
   data?: any;
   msg?: string;
+};
+
+export type ModalWrapperProps = {
+  style?: ViewStyle;
+  children: React.ReactNode;
+  bg?: string;
 };

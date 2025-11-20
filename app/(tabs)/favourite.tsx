@@ -1,11 +1,12 @@
-import { StyleSheet, Text, View } from 'react-native'
+import ScreenWrapper from '@/components/ScreenWrapper'
 import React from 'react'
+import { StyleSheet, Text } from 'react-native'
 
 const favourite = () => {
   return (
-    <View>
+    <ScreenWrapper>
       <Text>favourite</Text>
-    </View>
+    </ScreenWrapper>
   )
 }
 

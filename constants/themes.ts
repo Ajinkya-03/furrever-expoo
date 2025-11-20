@@ -1,5 +1,4 @@
 import { scale, verticalScale } from "@/utils/styling";
-import { Background } from "@react-navigation/elements";
 
 export const colors = {
   primary: "#f4a900", //dark yellow
@@ -11,7 +10,12 @@ export const colors = {
   white: "#fff", //white
   black: "#000", //black
   orange: "#e79700", //dark orange
+  red: "#E52020", //red
   green: "#366025", //dark green
+  lightgreen: "#78C841", //light green
+  blue: "#33A1E0",
+
+
   background: "#fdf4e3", //off white
   backgroundDark: "##f3e6ce", //light gray
   

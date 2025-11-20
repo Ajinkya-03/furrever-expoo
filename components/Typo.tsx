@@ -12,7 +12,6 @@ const Typo: React.FC<TypoProps> = ({
   style,
   textProps = {},
 }) => {
-  // Guard against undefined/null
   if (children === undefined || children === null) {
     console.warn("Typo received empty children");
     return null;

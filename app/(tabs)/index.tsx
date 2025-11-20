@@ -6,23 +6,18 @@ import { colors } from '@/constants/themes'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/config/firebase'
 import { useAuth } from '@/contexts/AuthContext'
+import ScreenWrapper from '@/components/ScreenWrapper'
 
 const Home = () => {
   const { user } = useAuth()
-  console.log("user : ", user)
-
-  const handleLogout = async () => {
-    await signOut(auth)
-  }
+  // console.log("user : ", user)
+  // const handleLogout = async () => {
+  //   await signOut(auth)
+  // }
   return (
-    <View>
-      <Text>Home</Text>
-      <Button onPress={handleLogout}>
-        <Typo color={colors.background}>
-          Logout
-        </Typo>
-      </Button>
-    </View>
+    <ScreenWrapper>
+      <Typo>Home</Typo>
+    </ScreenWrapper>
   );
 }
 

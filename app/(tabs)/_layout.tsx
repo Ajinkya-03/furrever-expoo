@@ -4,7 +4,7 @@ import CustomTabs from "@/components/CustomTabs";
 
 export default function _layout() {
   return (
-    <Tabs tabBar={(props) => <CustomTabs {...props} />} screenOptions={{ headerShown: true }}>
+    <Tabs tabBar={(props) => <CustomTabs {...props} />} screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="index" /> 
       <Tabs.Screen name="favourite" /> 
       <Tabs.Screen name="inbox" /> 
