@@ -1,11 +1,12 @@
-import { View, TouchableOpacity, Text } from 'react-native';
-import { BottomTabBarProps} from '@react-navigation/bottom-tabs';
+import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
+import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { colors } from '@/constants/themes';
+import { verticalScale } from '@/utils/styling';
 
 export default function CustomTabs({ state, descriptors, navigation }: BottomTabBarProps) {
 
     return (
-        <View style={{ flexDirection: 'row' , width: "100%", height: 100, }}>
+        <View style={styles.tabBar}>
             {state.routes.map((route, index) => {
                 const { options } = descriptors[route.key];
                 const label: any =
@@ -44,12 +45,24 @@ export default function CustomTabs({ state, descriptors, navigation }: BottomTab
                         onLongPress={onLongPress}
                         style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
                     >
-                        <Text style={{ color: isFocused ? colors.primary : colors.text }}>
+                        <Text style={{ color: isFocused ? colors.primary : colors.background }}>
                             {label}
-                        </Text>
+                        </Text>  
                     </TouchableOpacity>
                 );
             })}
         </View>
     );
 }
+
+const styles= StyleSheet.create({
+    tabBar:{
+        flexDirection: 'row', 
+        width: "100%", 
+        height: Platform.OS == 'ios'? verticalScale(73) : verticalScale(55),
+        backgroundColor: colors.green,
+        alignItems:'center',
+        justifyContent: 'space-between',
+
+    }
+})

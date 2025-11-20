@@ -10,7 +10,6 @@ import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
-
 const Login = () => {
   const emailRef = useRef("");
   const passwordRef = useRef("");
@@ -75,7 +74,6 @@ const Login = () => {
             loading={isLoading}
             onPress={handleSubmit}
             style={styles.loginButton}
-
           >
             <Typo fontWeight={"700"} color={colors.background} size={21}>
               Login

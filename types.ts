@@ -24,8 +24,8 @@ export type TypoProps = {
   size?: number;
   color?: string;
   fontWeight?: TextStyle["fontWeight"];
-  children: any | null;
-  style?: TextStyle;
+  children: React.ReactNode; 
+  style?: TextStyle | TextStyle[];
   textProps?: TextProps;
 };
 
@@ -114,4 +114,3 @@ export type ResponseType = {
   data?: any;
   msg?: string;
 };
-
