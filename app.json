@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.furrever.furreverexpo",
+      "infoPlist": {
+        "ITSAppUsesNOnExemptEncryption": false,
+        "supportsTablet": true
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,6 +22,7 @@
         "backgroundImage": "",
         "monochromeImage": ""
       },
+      "package": "com.furrever.furreverexpo",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
@@ -44,6 +49,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ad7b2d2d-6305-4234-83af-5f751746426c"
+      }
+    },
+    "owner": "ayushwankhede09"
   }
 }
