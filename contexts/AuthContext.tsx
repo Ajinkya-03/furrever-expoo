@@ -17,7 +17,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("🔥 onAuthStateChanged triggered. Firebase user:", firebaseUser);
       if (firebaseUser) {
         await updateUserData(firebaseUser.uid);
  router.replace("/(tabs)");
@@ -51,7 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name,
         email,
         uid: response?.user?.uid,
-        role: "adopter", // 👈 default role
+        role: "adopter", //  default role
       });
       console.log("🎉 Registration successful. User created as adopter:", email);
       return { success: true };

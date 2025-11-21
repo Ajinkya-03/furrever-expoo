@@ -8,7 +8,7 @@ const Button = ({ style, onPress, loading = false, children }: CustomButtonProps
   if (loading) {
     return (
       <View style={[styles.button, style, { backgroundColor: "transparent" }]}>
-        <Loading />
+        <Loading/>
       </View>
     );
   }
@@ -19,7 +19,7 @@ const Button = ({ style, onPress, loading = false, children }: CustomButtonProps
           {children}
         </Text>
       ) : (
-        children
+        <Text>{children}</Text>
       )}
     </TouchableOpacity>
   );

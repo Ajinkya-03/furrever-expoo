@@ -26,5 +26,5 @@ const styles = StyleSheet.create({
         alignSelf:'flex-start',
         backgroundColor: colors.green,
         padding: 5,
-    }
+    },
 })
