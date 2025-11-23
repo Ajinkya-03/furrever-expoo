@@ -80,6 +80,11 @@ export type ImageUploadProps = {
   imageStyle?: ViewStyle;
   placeholder?: string;
 };
+export type SliderProps = {
+  id: string;
+  imageUrl: string; 
+  title?: string;   
+};
 
 export type UserType = {
   uid?: string;
