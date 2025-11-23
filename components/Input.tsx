@@ -18,7 +18,7 @@ const Input = ({
         style={[styles.input, inputStyle]}
         placeholderTextColor={colors.orange}
         ref={inputRef}
-        {...textInputProps} // ✅ safe spread
+        {...textInputProps} 
       />
     </View>
   );

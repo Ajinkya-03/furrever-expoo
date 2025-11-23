@@ -119,3 +119,11 @@ export type ModalWrapperProps = {
   children: React.ReactNode;
   bg?: string;
 };
+export type UploadModalProps = {
+  modalVisible: boolean;
+  onBackPress: () => void;
+  onCameraPress: () => void;
+  onGalleryPress: () => void;
+  onRemovePress: () => void;
+  isLoading?: boolean;
+};

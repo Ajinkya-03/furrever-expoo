@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "450691309926",
+    "project_id": "furrever-expo",
+    "storage_bucket": "furrever-expo.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:450691309926:android:ce672587d482e61b8ee8a7",
+        "android_client_info": {
+          "package_name": "com.furrever.furreverexpo"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "450691309926-2cc25c8ssrchv1pv6icapa57ml0nviqi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAa-zFR0Wm3U_wjbTNFeAjNOryVcci43ss"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "450691309926-2cc25c8ssrchv1pv6icapa57ml0nviqi.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

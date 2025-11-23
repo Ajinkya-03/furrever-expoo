@@ -2,18 +2,15 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import React, { useEffect, useState } from "react";
-import ScreenWrapper from "@/components/ScreenWrapper";
 import ModalWrapper from "@/components/ModalWrapper";
 import Header from "@/components/Header";
 import BackButton from "@/components/BackButton";
 import { colors, spacingX, spacingY } from "@/constants/themes";
 import { Image } from "expo-image";
-import { getProfileImage } from "@/services/imageService";
 import { scale, verticalScale } from "@/utils/styling";
 import * as Icons from "phosphor-react-native";
 import Typo from "@/components/Typo";
@@ -23,52 +20,87 @@ import Button from "@/components/Button";
 import { useAuth } from "@/contexts/AuthContext";
 import { updateUser } from "@/services/userService";
 import { useRouter } from "expo-router";
-import * as ImagePicker from 'expo-image-picker';
+import * as ImagePicker from "expo-image-picker";
+import UploadModal from "./UploadModal";
 
-const profileModal = () => {
-
+const ProfileModal = () => {
   const { user, updateUserData } = useAuth();
   const [userData, setUserData] = useState<UserDataType>({
     name: "",
     image: null,
   });
   const [loading, setLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
   const router = useRouter();
+
   useEffect(() => {
     setUserData({
       name: user?.name || "",
-      image: user?.image || null,
-    })
-  }, [user])
+      image: user?.image || null, // string URL or null
+    });
+  }, [user]);
 
-  const onPickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+  const onBackPress = () => setModalVisible(false);
+
+  const onCameraPress = async () => {
+    const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.5,
-    })
+      aspect: [1, 1],
+      quality: 1,
+    });
+    console.log("Camera result:", result);
     if (!result.canceled) {
+      setUserData({ ...userData, image: result.assets[0] });
     }
+    setModalVisible(false);
+  };
 
-  }
+  const onGalleryPress = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+    console.log("Gallery result:", result);
+    if (!result.canceled) {
+      setUserData({ ...userData, image: result.assets[0] });
+    }
+    setModalVisible(false);
+  };
+
+  const onRemovePress = () => {
+    console.log("Remove image selected");
+    setUserData({ ...userData, image: null });
+    setModalVisible(false);
+  };
+
   const onSubmit = async () => {
-    let { name, image } = userData;
+    const { name, image } = userData;
+
     if (!name.trim()) {
-      Alert.alert("User", "Please Fill all the fields")
+      Alert.alert("User", "Please fill all the fields");
       return;
     }
+
+    console.log("Submitting update:", { name, imageType: typeof image, imageHasUri: (image as any)?.uri });
+
     setLoading(true);
-    const res = await updateUser(user?.uid as string, userData);
+
+    const res = await updateUser(user?.uid as string, {
+      name,
+      image: image || null, // object for upload, null to remove
+    });
+
     setLoading(false);
+
     if (res.success) {
       updateUserData(user?.uid as string);
-      router.back()
-
+      router.back();
     } else {
-      Alert.alert("User", res.msg)
+      Alert.alert("User", res.msg);
     }
-  }
+  };
+
   return (
     <ModalWrapper>
       <View style={styles.container}>
@@ -81,55 +113,59 @@ const profileModal = () => {
           <View style={styles.avatarContainer}>
             <Image
               style={styles.avatar}
-              source={getProfileImage(null)}
+              source={
+                typeof userData.image === "string"
+                  ? { uri: userData.image } // Cloudinary URL
+                  : (userData.image as any)?.uri
+                  ? { uri: (userData.image as any).uri } // local asset
+                  : require("../../assets/Avatar.jpg")
+              }
               contentFit="cover"
               transition={100}
             />
-
-            <TouchableOpacity onPress={onPickImage} style={styles.editIcon}>
-              <Icons.Pencil
-                size={verticalScale(20)}
-                color={colors.background}
-              />
+            <TouchableOpacity
+              onPress={() => setModalVisible(true)}
+              style={styles.editIcon}
+            >
+              <Icons.Pencil size={verticalScale(20)} color={colors.background} />
             </TouchableOpacity>
           </View>
           <View style={styles.inputContainer}>
-            <Typo color={colors.primary}>
-              Name
-            </Typo>
+            <Typo color={colors.text}>Name</Typo>
             <Input
               placeholder="Name"
               value={userData.name}
-              onChangeText={(value) =>
-                setUserData({ ...userData, name: value })
-              }
+              onChangeText={(value) => setUserData({ ...userData, name: value })}
             />
           </View>
         </ScrollView>
       </View>
       <View style={styles.footer}>
         <Button onPress={onSubmit} style={{ flex: 1 }} loading={loading}>
-          <Typo color={colors.background} fontWeight={"700"}>Update</Typo>
+          <Typo color={colors.background} fontWeight={"700"}>
+            Update
+          </Typo>
         </Button>
       </View>
+
+      <UploadModal
+        modalVisible={modalVisible}
+        onBackPress={onBackPress}
+        onCameraPress={onCameraPress}
+        onGalleryPress={onGalleryPress}
+        onRemovePress={onRemovePress}
+        isLoading={loading}
+      />
     </ModalWrapper>
   );
 };
-export default profileModal;
+
+export default ProfileModal;
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "space-between",
-    paddingHorizontal: spacingY._20,
-  },
-  avatarContainer: {
-    position: "relative",
-    alignSelf: "center",
-  },
-  form: {
-    gap: spacingY._30,
-    marginTop: spacingY._15,
-  },
+  container: { flex: 1, justifyContent: "space-between", paddingHorizontal: spacingY._20 },
+  avatarContainer: { position: "relative", alignSelf: "center" },
+  form: { gap: spacingY._30, marginTop: spacingY._15 },
   footer: {
     alignItems: "center",
     flexDirection: "row",
@@ -138,7 +174,6 @@ const styles = StyleSheet.create({
     gap: scale(12),
     paddingTop: spacingY._15,
     marginBottom: spacingY._20,
-
   },
   avatar: {
     alignSelf: "center",
@@ -154,7 +189,7 @@ const styles = StyleSheet.create({
     bottom: spacingY._5,
     right: spacingY._7,
     borderRadius: 100,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.green,
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.25,
@@ -162,7 +197,5 @@ const styles = StyleSheet.create({
     elevation: 4,
     padding: spacingY._7,
   },
-  inputContainer: {
-    gap: spacingY._10,
-  },
+  inputContainer: { gap: spacingY._10 },
 });
