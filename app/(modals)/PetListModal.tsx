@@ -9,7 +9,7 @@ import React, { useState } from "react";
 import ModalWrapper from "@/components/ModalWrapper";
 import Header from "@/components/Header";
 import BackButton from "@/components/BackButton";
-import { colors, spacingX, spacingY } from "@/constants/themes";
+import { colors, radius, spacingX, spacingY } from "@/constants/themes";
 import { Image } from "expo-image";
 import { scale, verticalScale } from "@/utils/styling";
 import { Pencil } from "phosphor-react-native";
@@ -21,6 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import UploadModal from "./UploadModal";
+import { Picker } from "@react-native-picker/picker"; // 👈 dropdown
 
 const PetListModal = () => {
   const { addPet } = usePets();
@@ -29,7 +30,7 @@ const PetListModal = () => {
 
   const [petData, setPetData] = useState({
     name: "",
-    category: "",
+    category: "Dogs",   // Default category set to Dogs
     age: "",
     description: "",
     address: "",
@@ -83,13 +84,20 @@ const PetListModal = () => {
       return;
     }
 
+    // Age validation
+    const ageNum = age ? Number(age) : undefined;
+    if (ageNum !== undefined && (ageNum < 0 || ageNum > 100)) {
+      Alert.alert("Pet", "Please enter a valid age between 0 and 100.");
+      return;
+    }
+
     setLoading(true);
 
     const res = await addPet(
       {
         name,
         category,
-        age: age ? Number(age) : undefined,
+        age: ageNum,
         description,
         address,
         ownerId: user?.uid,
@@ -123,8 +131,8 @@ const PetListModal = () => {
               typeof petData.image === "string"
                 ? { uri: petData.image }
                 : (petData.image as any)?.uri
-                ? { uri: (petData.image as any).uri }
-                : require("../../assets/Logo.png")
+                  ? { uri: (petData.image as any).uri }
+                  : require("../../assets/Logo.png")
             }
             contentFit="cover"
             transition={100}
@@ -152,13 +160,21 @@ const PetListModal = () => {
             />
           </View>
 
+          {/* Category Dropdown */}
           <View style={styles.inputContainer}>
             <Typo color={colors.text}>Category</Typo>
-            <Input
-              placeholder="Dog, Cat, etc."
-              value={petData.category}
-              onChangeText={(value) => setPetData({ ...petData, category: value })}
-            />
+            <View style={{ borderWidth: 1, borderColor: colors.green, borderRadius: radius._17, overflow: "hidden" }}>
+              <Picker
+                selectedValue={petData.category}
+                onValueChange={(value) => setPetData({ ...petData, category: value })}
+                style={styles.picker}
+              >
+                <Picker.Item label="Dogs" value="Dogs" />
+                <Picker.Item label="Cats" value="Cats" />
+                <Picker.Item label="Birds" value="Birds" />
+                <Picker.Item label="Others" value="Others" />
+              </Picker>
+            </View>
           </View>
 
           <View style={styles.inputContainer}>
@@ -261,5 +277,10 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     gap: spacingY._10,
+  },
+  picker: {
+    backgroundColor: colors.background,
+    color: colors.primary,
+
   },
 });

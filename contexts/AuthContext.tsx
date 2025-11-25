@@ -22,7 +22,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         router.replace("/(tabs)");
       } else {
         setUser(null);
-        console.log("🚪 No user logged in. Redirecting to welcome...");
+        console.log(" No user logged in. Redirecting to welcome...");
         router.replace("/(auth)/welcome");
       }
     });
@@ -32,13 +32,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      console.log("✅ Login successful for:", email);
+      console.log("Login successful for:", email);
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
       if (msg.includes("(auth/invalid-credential)")) msg = "Wrong credentials";
       if (msg.includes("(auth/invalid-email)")) msg = "Please enter a valid email id";
-      console.log("❌ Login failed:", msg);
+      console.log(" Login failed:", msg);
       return { success: false, msg };
     }
   };
@@ -50,9 +50,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name,
         email,
         uid: response?.user?.uid,
-        role: "adopter", //  default role
+        role: "adopter", // default role
+        petPostIds: "",  // initialize empty string
       });
-      console.log("🎉 Registration successful. User created as adopter:", email);
+      console.log("Registration successful. User created as adopter:", email);
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
@@ -60,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (msg.includes("(auth/invalid-email)")) msg = "Please enter a valid email";
       if (msg.includes("Password should be at least 6 characters (auth/weak-password)"))
         msg = "Please enter a strong password, minimum 6 characters";
-      console.log("❌ Registration failed:", msg);
+      console.log("Registration failed:", msg);
       return { success: false, msg };
     }
   };
@@ -74,18 +75,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userData = {
           uid: data?.uid ?? null,
           email: data?.email ?? null,
-          name: data?.name ?? null,   // 👈 fixed: always string or null
+          name: data?.name ?? null,
           image: data?.image ?? null,
           role: data?.role ?? "adopter",
-          
+          petPostIds: data?.petPostIds ?? "", // load petPostIds
         } as UserType;
         setUser(userData);
-        console.log("📥 User data loaded from Firestore:", userData);
+        console.log("User data loaded from Firestore:", userData);
       } else {
-        console.log("⚠️ No Firestore document found for uid:", uid);
+        console.log("No Firestore document found for uid:", uid);
       }
     } catch (error: any) {
-      console.error("❌ Error updating user data:", error.message);
+      console.error(" Error updating user data:", error.message);
     }
   };
 
@@ -94,12 +95,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const docRef = doc(firestore, "users", uid);
       await updateDoc(docRef, { role: "seller" });
       setUser((prev) => (prev ? { ...prev, role: "seller" } : prev));
-      console.log("🚀 User promoted to seller:", uid);
+      console.log("User promoted to seller:", uid);
     } catch (error: any) {
-      console.error("❌ Error promoting user to seller:", error.message);
+      console.error(" Error promoting user to seller:", error.message);
     }
   };
 
+  //  Add PetPostId
+  const addPetPostId = async (uid: string, petId: string) => {
+    try {
+      const docRef = doc(firestore, "users", uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const currentIds = docSnap.data()?.petPostIds || "";
+        const updatedIds = currentIds ? `${currentIds}, ${petId}` : petId;
+
+        await updateDoc(docRef, { petPostIds: updatedIds });
+        setUser((prev) => (prev ? { ...prev, petPostIds: updatedIds } : prev));
+        // console.log(" PetPostId added:", petId);
+      }
+    } catch (error: any) {
+      // console.error("Error adding PetPostId:", error.message);
+    }
+  };
+
+  // Remove PetPostId
+  const removePetPostId = async (uid: string, petId: string) => {
+    try {
+      const docRef = doc(firestore, "users", uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const currentIds = docSnap.data()?.petPostIds || "";
+        const updatedIds = currentIds
+          .split(",")
+          .filter((id: string) => id !== petId)
+          .join(",");
+
+        await updateDoc(docRef, { petPostIds: updatedIds });
+        setUser((prev) => (prev ? { ...prev, petPostIds: updatedIds } : prev));
+        console.log(" PetPostId removed:", petId);
+      }
+    } catch (error: any) {
+      // console.error("Error removing PetPostId:", error.message);
+    }
+  };
 
   const contextValue = {
     user,
@@ -108,6 +149,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     register,
     updateUserData,
     promoteToSeller,
+    addPetPostId,
+    removePetPostId,
   };
 
   return (

@@ -3,16 +3,15 @@ import React from "react";
 import "@/global.css";
 import { Stack } from "expo-router";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { PetProvider } from "@/contexts/PetContext"; // 👈 import PetProvider
+import { PetProvider } from "@/contexts/PetContext";
 
 const StackLayout = () => {
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {/* You don’t need to declare index.tsx here unless you want custom options */}
       <Stack.Screen
-        name="(tabs)/index"
+        name="(tabs)"
         options={{
-          presentation: "modal",
+          headerShown: false,
         }}
       />
     </Stack>

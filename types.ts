@@ -28,6 +28,7 @@ export type accountOptionType = {
   bgColor: string;
   routeName?: any;
 };
+
 export type IconComponent = React.ComponentType<{
   height?: number;
   width?: number;
@@ -61,8 +62,6 @@ export interface InputProps extends TextInputProps {
   containerStyle?: ViewStyle;
   inputStyle?: TextStyle;
   inputRef?: React.RefObject<TextInput>;
-  //   label?: string;
-  //   error?: string;
 }
 
 export interface CustomButtonProps extends TouchableOpacityProps {
@@ -80,19 +79,25 @@ export type ImageUploadProps = {
   imageStyle?: ViewStyle;
   placeholder?: string;
 };
+
 export type SliderProps = {
   id: string;
   imageUrl: string;
   title?: string;
 };
 
+/**
+ * 🔧 Updated UserType
+ * - Removed noOfPosts
+ * - Added petPostIds (string of comma-separated IDs)
+ */
 export type UserType = {
-  noofPosts?: number;
   uid?: string;
   email?: string | null;
   name: string | null;
   image?: any;
-  role?: "adopter" | "seller"; // 👈 Add this line
+  role?: "adopter" | "seller";
+  petPostIds?: string; // 👈 new field
 } | null;
 
 export type UserDataType = {
@@ -113,7 +118,9 @@ export type AuthContextType = {
     name: string
   ) => Promise<{ success: boolean; msg?: string }>;
   updateUserData: (userId: string) => Promise<void>;
-  promoteToSeller: (uid: string) => Promise<void>; // 👈 Add this line
+  promoteToSeller: (uid: string) => Promise<void>;
+  addPetPostId: (uid: string, petId: string) => Promise<void>;   // 👈 new
+  removePetPostId: (uid: string, petId: string) => Promise<void>; // 👈 new
 };
 
 export type PetType = {
@@ -121,11 +128,11 @@ export type PetType = {
   name: string; // Pet name
   category: string; // e.g. "Dog", "Cat"
   age?: number; // optional
-  description?: string; // 👈 new field
-  address?: string; // 👈 new field
-  image?: string; // Cloudinary URL
-  createdAt?: Date; // timestamp
-  ownerId?: string; // link to user.uid
+  description?: string; 
+  address?: string; 
+  image?: string; 
+  createdAt?: Date;
+  ownerId?: string; 
 };
 
 export type PetContextType = {
@@ -152,6 +159,7 @@ export type ModalWrapperProps = {
   children: React.ReactNode;
   bg?: string;
 };
+
 export type UploadModalProps = {
   modalVisible: boolean;
   onBackPress: () => void;
