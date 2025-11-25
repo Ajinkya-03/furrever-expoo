@@ -12,7 +12,7 @@ import BackButton from "@/components/BackButton";
 import { colors, spacingX, spacingY } from "@/constants/themes";
 import { Image } from "expo-image";
 import { scale, verticalScale } from "@/utils/styling";
-import * as Icons from "phosphor-react-native";
+import { Pencil } from "phosphor-react-native";
 import Typo from "@/components/Typo";
 import Input from "@/components/Input";
 import { UserDataType } from "@/types";
@@ -36,7 +36,7 @@ const ProfileModal = () => {
   useEffect(() => {
     setUserData({
       name: user?.name || "",
-      image: user?.image || null, // string URL or null
+      image: user?.image || null,
     });
   }, [user]);
 
@@ -88,7 +88,7 @@ const ProfileModal = () => {
 
     const res = await updateUser(user?.uid as string, {
       name,
-      image: image || null, // object for upload, null to remove
+      image: image || null,
     });
 
     setLoading(false);
@@ -115,9 +115,9 @@ const ProfileModal = () => {
               style={styles.avatar}
               source={
                 typeof userData.image === "string"
-                  ? { uri: userData.image } // Cloudinary URL
+                  ? { uri: userData.image }
                   : (userData.image as any)?.uri
-                  ? { uri: (userData.image as any).uri } // local asset
+                  ? { uri: (userData.image as any).uri }
                   : require("../../assets/Avatar.jpg")
               }
               contentFit="cover"
@@ -127,7 +127,11 @@ const ProfileModal = () => {
               onPress={() => setModalVisible(true)}
               style={styles.editIcon}
             >
-              <Icons.Pencil size={verticalScale(20)} color={colors.background} />
+              <Pencil 
+                size={verticalScale(20)} 
+                color={colors.background} 
+                weight="duotone"
+              />
             </TouchableOpacity>
           </View>
           <View style={styles.inputContainer}>

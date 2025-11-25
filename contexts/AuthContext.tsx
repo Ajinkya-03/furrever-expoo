@@ -19,7 +19,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         await updateUserData(firebaseUser.uid);
- router.replace("/(tabs)");
+        router.replace("/(tabs)");
       } else {
         setUser(null);
         console.log("🚪 No user logged in. Redirecting to welcome...");
@@ -77,6 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: data?.name ?? null,   // 👈 fixed: always string or null
           image: data?.image ?? null,
           role: data?.role ?? "adopter",
+          
         } as UserType;
         setUser(userData);
         console.log("📥 User data loaded from Firestore:", userData);
@@ -98,6 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error("❌ Error promoting user to seller:", error.message);
     }
   };
+
 
   const contextValue = {
     user,

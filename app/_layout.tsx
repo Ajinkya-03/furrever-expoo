@@ -1,22 +1,30 @@
-import { View, Text } from 'react-native'
-import React from 'react'
-import '@/global.css'
-import { Stack } from 'expo-router'
-import { AuthProvider } from '@/contexts/AuthContext'
+import { View, Text } from "react-native";
+import React from "react";
+import "@/global.css";
+import { Stack } from "expo-router";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { PetProvider } from "@/contexts/PetContext"; // 👈 import PetProvider
 
 const StackLayout = () => {
-  return <Stack screenOptions={{ headerShown: false }}>
-    <Stack.Screen name="(tabs)/index.tsx"
-      options={{
-        presentation: "modal",
-      }}
-    />
-  </Stack>
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* You don’t need to declare index.tsx here unless you want custom options */}
+      <Stack.Screen
+        name="(tabs)/index"
+        options={{
+          presentation: "modal",
+        }}
+      />
+    </Stack>
+  );
 };
-export default function RooLayout() {
+
+export default function RootLayout() {
   return (
     <AuthProvider>
-      <StackLayout />
+      <PetProvider>
+        <StackLayout />
+      </PetProvider>
     </AuthProvider>
-  )
+  );
 }

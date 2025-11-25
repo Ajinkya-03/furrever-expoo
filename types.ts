@@ -82,15 +82,17 @@ export type ImageUploadProps = {
 };
 export type SliderProps = {
   id: string;
-  imageUrl: string; 
-  title?: string;   
+  imageUrl: string;
+  title?: string;
 };
 
 export type UserType = {
+  noofPosts?: number;
   uid?: string;
   email?: string | null;
   name: string | null;
   image?: any;
+  role?: "adopter" | "seller"; // 👈 Add this line
 } | null;
 
 export type UserDataType = {
@@ -111,6 +113,32 @@ export type AuthContextType = {
     name: string
   ) => Promise<{ success: boolean; msg?: string }>;
   updateUserData: (userId: string) => Promise<void>;
+  promoteToSeller: (uid: string) => Promise<void>; // 👈 Add this line
+};
+
+export type PetType = {
+  id: string; // Firestore doc ID
+  name: string; // Pet name
+  category: string; // e.g. "Dog", "Cat"
+  age?: number; // optional
+  description?: string; // 👈 new field
+  address?: string; // 👈 new field
+  image?: string; // Cloudinary URL
+  createdAt?: Date; // timestamp
+  ownerId?: string; // link to user.uid
+};
+
+export type PetContextType = {
+  pets: PetType[];
+  addPet: (
+    petData: Omit<PetType, "id" | "image" | "createdAt">,
+    imageFile: any
+  ) => Promise<{ success: boolean; msg?: string }>;
+  updatePet: (
+    id: string,
+    updates: Partial<PetType>
+  ) => Promise<{ success: boolean; msg?: string }>;
+  deletePet: (id: string) => Promise<{ success: boolean; msg?: string }>;
 };
 
 export type ResponseType = {
@@ -131,4 +159,10 @@ export type UploadModalProps = {
   onGalleryPress: () => void;
   onRemovePress: () => void;
   isLoading?: boolean;
+};
+
+export type CategoryTypeProps = {
+  type: string;
+  imageUrl: string;
+  id: string;
 };
