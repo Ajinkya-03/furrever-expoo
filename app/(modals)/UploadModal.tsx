@@ -21,42 +21,63 @@ const UploadModal: React.FC<UploadModalProps> = ({
     isLoading = false,
 }) => {
     return (
-        <Modal animationType="slide" visible={modalVisible} transparent>
+        <Modal 
+            animationType="fade" // Fade feels smoother for centered overlays
+            visible={modalVisible} 
+            transparent
+            onRequestClose={onBackPress} // Handles hardware back button on Android
+        >
             <TouchableOpacity
                 style={styles.container}
                 onPress={onBackPress}
                 activeOpacity={1}
             >
-                {isLoading ? (
-                    <ActivityIndicator size={70} color={colors.primary} />
-                ) : (
-                    <View style={styles.modalView}>
-                        <Typo style={styles.title}>Profile Photo</Typo>
-                        <View style={styles.decisionRow}>
-                            <TouchableOpacity style={styles.optionBtn} onPress={onCameraPress}>
-                                <Icons.Camera
-                                    size={verticalScale(26)}
-                                    color={colors.green}
-                                    weight="fill"
-                                />
-                                <Typo>Camera</Typo>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity style={styles.optionBtn} onPress={onGalleryPress}>
-                                <Icons.Image
-                                    size={verticalScale(26) }
-                                    color={colors.green}
-                                    weight="fill"
-                                />
-                                <Typo>Gallery</Typo>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.optionBtn} onPress={onRemovePress}>
-                                <Icons.Trash size={verticalScale(26)} color={colors.green} weight="fill" />
-                                <Typo>Remove</Typo>
-                            </TouchableOpacity>
+                <View style={styles.modalView}>
+                    {isLoading ? (
+                        <View style={styles.loadingView}>
+                            <ActivityIndicator size="large" color={colors.primary} />
+                            <Typo style={{marginTop: 10}}>Uploading...</Typo>
                         </View>
-                    </View>
-                )}
+                    ) : (
+                        <>
+                            <Typo style={styles.title}>Add Photo</Typo>
+                            <View style={styles.decisionRow}>
+                                <TouchableOpacity style={styles.optionBtn} onPress={onCameraPress}>
+                                    <View style={[styles.iconCircle, {backgroundColor: colors.primary + '15'}]}>
+                                        <Icons.Camera
+                                            size={verticalScale(26)}
+                                            color={colors.primary}
+                                            weight="fill"
+                                        />
+                                    </View>
+                                    <Typo size={12} fontWeight="600">Camera</Typo>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity style={styles.optionBtn} onPress={onGalleryPress}>
+                                    <View style={[styles.iconCircle, {backgroundColor: colors.green + '15'}]}>
+                                        <Icons.Image
+                                            size={verticalScale(26)}
+                                            color={colors.green}
+                                            weight="fill"
+                                        />
+                                    </View>
+                                    <Typo size={12} fontWeight="600">Gallery</Typo>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity style={styles.optionBtn} onPress={onRemovePress}>
+                                    <View style={[styles.iconCircle, {backgroundColor: colors.red + '15'}]}>
+                                        <Icons.Trash 
+                                            size={verticalScale(26)} 
+                                            color={colors.red} 
+                                            weight="fill" 
+                                        />
+                                    </View>
+                                    <Typo size={12} fontWeight="600">Remove</Typo>
+                                </TouchableOpacity>
+                            </View>
+                        </>
+                    )}
+                </View>
             </TouchableOpacity>
         </Modal>
     );
@@ -67,30 +88,47 @@ export default UploadModal;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "rgba(0,0,0,0.5)",
+        backgroundColor: "rgba(0,0,0,0.6)", // Slightly darker for focus
         justifyContent: "center",
         alignItems: "center",
     },
     modalView: {
         backgroundColor: colors.background,
-        borderRadius: radius._17,
+        borderRadius: radius._20, // Match your app's rounded style
         padding: spacingY._20,
-        width: "80%",
+        width: "85%",
         alignItems: "center",
+        elevation: 10,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+    },
+    loadingView: {
+        padding: spacingY._20,
+        alignItems: 'center',
     },
     title: {
-        marginBottom: spacingY._10,
+        marginBottom: spacingY._15,
         fontSize: verticalScale(18),
         fontWeight: "700",
+        color: colors.text,
     },
     decisionRow: {
         flexDirection: "row",
         justifyContent: "space-around",
         width: "100%",
-        marginTop: spacingY._10,
+        marginTop: spacingY._5,
     },
     optionBtn: {
         alignItems: "center",
-        gap: spacingY._5,
+        gap: spacingY._7,
     },
+    iconCircle: {
+        width: verticalScale(60),
+        height: verticalScale(60),
+        borderRadius: radius._15,
+        justifyContent: 'center',
+        alignItems: 'center',
+    }
 });

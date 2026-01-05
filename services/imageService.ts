@@ -1,20 +1,15 @@
-import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from "@/constants";
 import { ResponseType } from "@/types";
 import axios from "axios";
 
-const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+const API_URL = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
+const UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "unsigned_preset";
+const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${API_URL}/image/upload`;
 
 export const uploadFileToCloudinary = async (
   file: { uri?: string } | string,
   folderName: string
 ): Promise<ResponseType> => {
   try {
-    console.log("uploadFileToCloudinary called:", {
-      fileType: typeof file,
-      uri: (file as any)?.uri,
-      folderName,
-    });
-
     if (typeof file === "string") return { success: true, data: file };
 
     if (file && file.uri) {
@@ -24,17 +19,13 @@ export const uploadFileToCloudinary = async (
         type: "image/jpeg",
         name: file.uri.split("/").pop() || "file.jpg",
       } as any);
-      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+      formData.append("upload_preset", UPLOAD_PRESET);
       formData.append("folder", folderName);
 
       const response = await axios.post(CLOUDINARY_UPLOAD_URL, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      console.log(
-        "Cloudinary upload OK. secure_url:",
-        response.data?.secure_url
-      );
       return { success: true, data: response.data.secure_url };
     }
 
@@ -50,8 +41,9 @@ export const getProfileImage = (file: any) => {
   if (file && file.uri) return { uri: file.uri };
   return require("../assets/Avatar.jpg");
 };
+
 export const getPetImage = (file: any) => {
   if (typeof file === "string") return { uri: file };
   if (file && file.uri) return { uri: file.uri };
-  return require("../assets/Logo.png"); // 👈 add a default pet placeholder
+  return require("../assets/Logo.png");
 };

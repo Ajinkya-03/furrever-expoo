@@ -1,36 +1,37 @@
-import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import React, { useState } from "react";
-import ModalWrapper from "@/components/ModalWrapper";
-import Header from "@/components/Header";
 import BackButton from "@/components/BackButton";
-import { colors, radius, spacingX, spacingY } from "@/constants/themes";
-import { Image } from "expo-image";
-import { scale, verticalScale } from "@/utils/styling";
-import { Pencil } from "phosphor-react-native";
-import Typo from "@/components/Typo";
-import Input from "@/components/Input";
 import Button from "@/components/Button";
-import { usePets } from "@/contexts/PetContext";
+import Header from "@/components/Header";
+import Input from "@/components/Input";
+import ModalWrapper from "@/components/ModalWrapper";
+import Typo from "@/components/Typo";
+import { colors, radius, spacingX, spacingY } from "@/constants/themes";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRouter } from "expo-router";
+import { usePets } from "@/contexts/PetContext";
+import { getPetImage } from "@/services/imageService";
+import { scale, verticalScale } from "@/utils/styling";
+import { Picker } from "@react-native-picker/picker";
+import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { CheckCircle, MapPinLine, Pencil } from "phosphor-react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import UploadModal from "./UploadModal";
-import { Picker } from "@react-native-picker/picker"; // 👈 dropdown
 
 const PetListModal = () => {
-  const { addPet } = usePets();
+  const { addPet, updatePet, pets } = usePets();
   const { user } = useAuth();
   const router = useRouter();
+  const { id, mode } = useLocalSearchParams(); 
+
+  const isEditMode = mode === 'edit';
 
   const [petData, setPetData] = useState({
     name: "",
-    category: "Dogs",   // Default category set to Dogs
+    category: "Dogs",
+    breed: "",
+    color: "",
     age: "",
     description: "",
     address: "",
@@ -38,192 +39,211 @@ const PetListModal = () => {
   });
 
   const [loading, setLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [locationFetched, setLocationFetched] = useState(false);
 
-  const onBackPress = () => setModalVisible(false);
+  // * Pre-fill logic for Edit Mode
+  useEffect(() => {
+    if (isEditMode && id) {
+      const petToEdit = pets.find((p: { id: string | string[]; }) => p.id === id);
+      if (petToEdit) {
+        setPetData({
+          name: petToEdit.name,
+          category: petToEdit.category,
+          breed: petToEdit.breed,
+          color: petToEdit.coatcolor || "",
+          age: petToEdit.age?.toString() || "",
+          description: petToEdit.description || "",
+          address: petToEdit.address || "",
+          image: petToEdit.image, 
+        });
+        setLocationFetched(!!petToEdit.address);
+      }
+    }
+  }, [id, mode, pets]);
 
-  const onCameraPress = async () => {
+  const handleCameraPress = async () => {
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7,
     });
-    if (!result.canceled) {
-      setPetData({ ...petData, image: result.assets[0] });
-    }
+    if (!result.canceled) setPetData({ ...petData, image: result.assets[0] });
     setModalVisible(false);
   };
 
-  const onGalleryPress = async () => {
+  const handleGalleryPress = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7,
     });
-    if (!result.canceled) {
-      setPetData({ ...petData, image: result.assets[0] });
-    }
+    if (!result.canceled) setPetData({ ...petData, image: result.assets[0] });
     setModalVisible(false);
   };
 
-  const onRemovePress = () => {
+  const handleRemovePress = () => {
     setPetData({ ...petData, image: null });
     setModalVisible(false);
   };
 
+  // --- * Updated Location logic: Always allows re-fetching ---
+  const handleFetchLocation = async () => {
+    setLocationLoading(true);
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("Permission Denied", "Allow location access to auto-fill address.");
+        return;
+      }
+      let location = await Location.getCurrentPositionAsync({});
+      let reverseGeocode = await Location.reverseGeocodeAsync({
+        latitude: location.coords.latitude, longitude: location.coords.longitude
+      });
+      if (reverseGeocode.length > 0) {
+        let item = reverseGeocode[0];
+        let addressStr = `${item.name || ''}, ${item.street || ''}, ${item.city}, ${item.region}`;
+        addressStr = addressStr.replace(/^, /, "").replace(/, , /g, ", ");
+        setPetData(prev => ({ ...prev, address: addressStr }));
+        setLocationFetched(true); 
+      }
+    } catch (error) {
+      Alert.alert("Location Error", "Could not fetch location.");
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
   const onSubmit = async () => {
-    const { name, category, age, description, address, image } = petData;
+    const { name, category, breed, color, age, description, address, image } = petData;
 
-    if (!name.trim() || !category.trim() || !description.trim() || !address.trim()) {
+    if (!name.trim() || !category.trim() || !breed.trim() || !description.trim() || !address.trim()) {
       Alert.alert("Pet", "Please fill all required fields");
-      return;
-    }
-
-    if (!image || !(image as any)?.uri) {
-      Alert.alert("Pet", "Please add an authentic image for your pet.");
-      return;
-    }
-
-    // Age validation
-    const ageNum = age ? Number(age) : undefined;
-    if (ageNum !== undefined && (ageNum < 0 || ageNum > 100)) {
-      Alert.alert("Pet", "Please enter a valid age between 0 and 100.");
       return;
     }
 
     setLoading(true);
 
-    const res = await addPet(
-      {
-        name,
-        category,
-        age: ageNum,
-        description,
-        address,
-        ownerId: user?.uid,
-      },
-      image
-    );
-
-    setLoading(false);
-
-    if (res.success) {
-      router.back();
+    if (isEditMode && id) {
+      const res = await updatePet(id as string, {
+        name, category, breed, coatcolor: color,
+        age: age ? Number(age) : undefined,
+        description, address
+      });
+      setLoading(false);
+      if (res.success) {
+        Alert.alert("Success", "Listing updated!");
+        router.back();
+      } else {
+        Alert.alert("Error", res.msg || "Update failed");
+      }
     } else {
-      Alert.alert("Pet", res.msg || "Could not add pet");
+      const res = await addPet({
+        name, category, breed, coatcolor: color,
+        age: age ? Number(age) : undefined,
+        description, address, ownerId: user?.uid ?? "",
+      }, image);
+      setLoading(false);
+      if (res.success) router.back();
+      else Alert.alert("Error", res.msg || "Could not add pet");
     }
   };
 
   return (
     <ModalWrapper>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Header
-          title="Add Pet"
-          leftIcon={<BackButton />}
-          style={{ marginBottom: spacingY._10 }}
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <Header 
+          title={isEditMode ? "Edit Pet" : "Add Pet"} 
+          leftIcon={<BackButton />} 
+          style={{ marginBottom: spacingY._10 }} 
         />
 
-        {/* Pet Image */}
         <View style={styles.avatarContainer}>
           <Image
             style={styles.avatar}
-            source={
-              typeof petData.image === "string"
-                ? { uri: petData.image }
-                : (petData.image as any)?.uri
-                  ? { uri: (petData.image as any).uri }
-                  : require("../../assets/Logo.png")
-            }
+            source={getPetImage(petData.image)}
             contentFit="cover"
             transition={100}
           />
-          <TouchableOpacity
-            onPress={() => setModalVisible(true)}
-            style={styles.editIcon}
-          >
-            <Pencil
-              size={verticalScale(20)}
-              color={colors.background}
-              weight="duotone"
-            />
+          <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.editIcon}>
+            <Pencil size={verticalScale(20)} color={colors.background} weight="duotone" />
           </TouchableOpacity>
         </View>
 
-        {/* Inputs */}
         <View style={styles.form}>
           <View style={styles.inputContainer}>
             <Typo color={colors.text}>Name</Typo>
-            <Input
-              placeholder="Pet name"
-              value={petData.name}
-              onChangeText={(value) => setPetData({ ...petData, name: value })}
-            />
+            <Input placeholder="Pet name" value={petData.name} onChangeText={(v) => setPetData({ ...petData, name: v })} />
           </View>
 
-          {/* Category Dropdown */}
           <View style={styles.inputContainer}>
             <Typo color={colors.text}>Category</Typo>
-            <View style={{ borderWidth: 1, borderColor: colors.green, borderRadius: radius._17, overflow: "hidden" }}>
-              <Picker
-                selectedValue={petData.category}
-                onValueChange={(value) => setPetData({ ...petData, category: value })}
-                style={styles.picker}
-              >
-                <Picker.Item label="Dogs" value="Dogs" />
-                <Picker.Item label="Cats" value="Cats" />
-                <Picker.Item label="Birds" value="Birds" />
-                <Picker.Item label="Others" value="Others" />
+            <View style={styles.pickerWrapper}>
+              <Picker selectedValue={petData.category} onValueChange={(v) => setPetData({ ...petData, category: v })} style={styles.picker}>
+                <Picker.Item label="Dogs" value="Dogs" /><Picker.Item label="Cats" value="Cats" /><Picker.Item label="Birds" value="Birds" /><Picker.Item label="Others" value="Others" />
               </Picker>
             </View>
           </View>
 
           <View style={styles.inputContainer}>
+            <Typo color={colors.text}>Breed</Typo>
+            <Input placeholder="e.g. Labrador / Persian Cat" value={petData.breed} onChangeText={(v) => setPetData({ ...petData, breed: v })} />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Typo color={colors.text}>Color</Typo>
+            <Input placeholder="e.g. White / Brown" value={petData.color} onChangeText={(v) => setPetData({ ...petData, color: v })} />
+          </View>
+
+          <View style={styles.inputContainer}>
             <Typo color={colors.text}>Age</Typo>
-            <Input
-              placeholder="Age in years"
-              keyboardType="numeric"
-              value={petData.age}
-              onChangeText={(value) => setPetData({ ...petData, age: value })}
-            />
+            <Input placeholder="Age in years" keyboardType="numeric" value={petData.age} onChangeText={(v) => setPetData({ ...petData, age: v })} />
           </View>
 
           <View style={styles.inputContainer}>
-            <Typo color={colors.text}>Description</Typo>
-            <Input
-              placeholder="Describe your pet"
-              value={petData.description}
-              onChangeText={(value) => setPetData({ ...petData, description: value })}
-            />
+            <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
+               <Typo color={colors.text}>Description</Typo>
+               <Typo size={12} color={petData.description.trim().split(/\s+/).length < 20 ? colors.red : colors.green}>Min 20 words</Typo>
+            </View>
+            <Input placeholder="Describe your pet..." value={petData.description} multiline containerStyle={{minHeight: verticalScale(80), alignItems: 'flex-start', paddingTop: 10}} onChangeText={(v) => setPetData({ ...petData, description: v })} />
           </View>
 
           <View style={styles.inputContainer}>
-            <Typo color={colors.text}>Address</Typo>
-            <Input
-              placeholder="Your address"
-              value={petData.address}
-              onChangeText={(value) => setPetData({ ...petData, address: value })}
-            />
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+              <Typo color={colors.text}>Address</Typo>
+              <TouchableOpacity 
+                onPress={handleFetchLocation} 
+                style={[
+                  styles.locationBtn,
+                  locationFetched && { backgroundColor: colors.green + '15', borderColor: colors.green, borderWidth: 1 } 
+                ]} 
+                disabled={locationLoading}
+              >
+                {locationLoading ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <>
+                    {locationFetched ? (
+                      <CheckCircle size={18} color={colors.green} weight="fill" />
+                    ) : (
+                      <MapPinLine size={18} color={colors.primary} weight="bold" />
+                    )}
+                    <Typo size={12} color={locationFetched ? colors.green : colors.primary} fontWeight="600">
+                      {locationFetched ? (isEditMode ? " Update Location" : " Location Set") : " Get Location"}
+                    </Typo>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+            <Input placeholder="Address auto-filled" value={petData.address} editable={false} />
           </View>
 
-          {/* Footer */}
           <View style={styles.footer}>
             <Button onPress={onSubmit} style={{ flex: 1 }} loading={loading}>
-              <Typo color={colors.background} fontWeight={"700"}>
-                Save Pet
-              </Typo>
+              <Typo color={colors.background} fontWeight={"700"}>{isEditMode ? "Update Pet" : "Save Pet"}</Typo>
             </Button>
           </View>
         </View>
       </ScrollView>
 
-      <UploadModal
-        modalVisible={modalVisible}
-        onBackPress={onBackPress}
-        onCameraPress={onCameraPress}
-        onGalleryPress={onGalleryPress}
-        onRemovePress={onRemovePress}
-        isLoading={loading}
-      />
+      <UploadModal modalVisible={modalVisible} onBackPress={() => setModalVisible(false)} onCameraPress={handleCameraPress} onGalleryPress={handleGalleryPress} onRemovePress={handleRemovePress} isLoading={loading} />
     </ModalWrapper>
   );
 };
@@ -231,56 +251,14 @@ const PetListModal = () => {
 export default PetListModal;
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: spacingY._20,
-    paddingBottom: spacingY._30,
-  },
-  avatarContainer: {
-    position: "relative",
-    alignSelf: "center",
-    marginTop: spacingY._10,
-  },
-  form: {
-    gap: spacingY._30,
-    marginTop: spacingY._15,
-  },
-  footer: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    paddingHorizontal: spacingX._20,
-    gap: scale(12),
-    paddingTop: spacingY._15,
-    marginBottom: spacingY._20,
-  },
-  avatar: {
-    alignSelf: "center",
-    backgroundColor: colors.backgroundDark,
-    height: verticalScale(135),
-    width: verticalScale(135),
-    borderRadius: 200,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  editIcon: {
-    position: "absolute",
-    bottom: spacingY._5,
-    right: spacingY._7,
-    borderRadius: 100,
-    backgroundColor: colors.green,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
-    padding: spacingY._7,
-  },
-  inputContainer: {
-    gap: spacingY._10,
-  },
-  picker: {
-    backgroundColor: colors.background,
-    color: colors.primary,
-
-  },
+  container: { paddingHorizontal: spacingX._20, paddingBottom: spacingY._30 },
+  avatarContainer: { position: "relative", alignSelf: "center", marginTop: spacingY._10 },
+  form: { gap: spacingY._20, marginTop: spacingY._15 },
+  footer: { alignItems: "center", flexDirection: "row", justifyContent: "center", paddingHorizontal: spacingX._20, gap: scale(12), paddingTop: spacingY._15, marginBottom: spacingY._20 },
+  avatar: { alignSelf: "center", backgroundColor: colors.backgroundDark, height: verticalScale(135), width: verticalScale(135), borderRadius: 200, borderWidth: 1, borderColor: colors.primary },
+  editIcon: { position: "absolute", bottom: spacingY._5, right: spacingY._7, borderRadius: 100, backgroundColor: colors.green, padding: spacingY._7, elevation: 4 },
+  inputContainer: { gap: spacingY._10 },
+  locationBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius._10, gap: 4 },
+  pickerWrapper: { borderWidth: 1, borderColor: colors.green, borderRadius: radius._17, overflow: "hidden" },
+  picker: { backgroundColor: colors.background, color: colors.primary },
 });

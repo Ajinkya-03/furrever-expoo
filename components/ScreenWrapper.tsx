@@ -1,20 +1,29 @@
-import { View, Text, StyleSheet, Platform, Dimensions, StatusBar } from 'react-native'
-import React from 'react'
-import { ScreenWrapperProps } from '@/types'
 import { colors } from '@/constants/themes'
+import { ScreenWrapperProps } from '@/types'
+import React from 'react'
+import { Platform, StatusBar, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-const { height } = Dimensions.get('window')
 const ScreenWrapper = ({ style, children }: ScreenWrapperProps) => {
-    let paddingTop = Platform.OS == 'android' || Platform.OS == 'ios' ? height * 0.10 : 50
+    // * This hook gets the EXACT pixel height of the notch/status bar
+    const insets = useSafeAreaInsets();
+
+    // Account for Android StatusBar vs iOS Notch
+    const paddingTop = Platform.OS === 'ios' 
+        ? insets.top 
+        : Math.max(insets.top, 15); // Gives a minimum breathing room on Android
+
     return (
         <View style={[{
             paddingTop,
             flex: 1, 
             backgroundColor: colors.background
         }, style]}>
-            <StatusBar barStyle="light-content"/>
+            {/* barStyle "dark-content" usually looks better on light backgrounds */}
+            <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
             {children}
         </View>
     )
 }
+
 export default ScreenWrapper

@@ -25,6 +25,7 @@ const Category: React.FC<CategoryProps> = ({ onCategorySelect }) => {
     const iconProps = { size: 32, weight: "duotone" as const };
     switch (imageUrl.toLowerCase()) {
       case "dog":
+      default:
         return <Dog {...iconProps} color={colors.orange} />;
       case "cat":
         return <Cat {...iconProps} color="#4ECDC4" />;
@@ -33,7 +34,6 @@ const Category: React.FC<CategoryProps> = ({ onCategorySelect }) => {
       case "others":
         return <PawPrint {...iconProps} color={colors.blue} />;
       case "all":
-      default:
         return <PawPrint {...iconProps} color={colors.green} />;
     }
   };
@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
   },
   columnWrapper: {
     justifyContent: "space-around",
-    alignSelf : "center",
+    alignSelf: "center",
   },
   categoryItem: {
     alignItems: "center",

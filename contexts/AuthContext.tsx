@@ -6,7 +6,15 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import {
+  arrayRemove,
+  arrayUnion,
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  updateDoc
+} from "firebase/firestore";
 import { createContext, useContext, useEffect, useState } from "react";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,7 +30,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         router.replace("/(tabs)");
       } else {
         setUser(null);
-        console.log(" No user logged in. Redirecting to welcome...");
         router.replace("/(auth)/welcome");
       }
     });
@@ -32,44 +39,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      console.log("Login successful for:", email);
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
       if (msg.includes("(auth/invalid-credential)")) msg = "Wrong credentials";
       if (msg.includes("(auth/invalid-email)")) msg = "Please enter a valid email id";
-      console.log(" Login failed:", msg);
       return { success: false, msg };
     }
   };
 
   const register = async (email: string, password: string, name: string) => {
     try {
-      let response = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(firestore, "users", response?.user?.uid), {
+      const response = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = response?.user?.uid;
+
+      const userData = {
         name,
         email,
-        uid: response?.user?.uid,
-        role: "adopter", // default role
-        petPostIds: "",  // initialize empty string
-      });
-      console.log("Registration successful. User created as adopter:", email);
+        uid,
+        role: "adopter",
+        petPostIds: [],
+        favorites: [], // * Initialize empty favorites array in DB
+        createdAt: serverTimestamp(),
+      };
+
+      await setDoc(doc(firestore, "users", uid), userData);
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
-      if (msg.includes("(auth/email-already-in-use)")) msg = "This email already exists ";
+      if (msg.includes("(auth/email-already-in-use)")) msg = "This email already exists";
       if (msg.includes("(auth/invalid-email)")) msg = "Please enter a valid email";
-      if (msg.includes("Password should be at least 6 characters (auth/weak-password)"))
-        msg = "Please enter a strong password, minimum 6 characters";
-      console.log("Registration failed:", msg);
+      if (msg.includes("auth/weak-password")) msg = "Minimum 6 characters required";
       return { success: false, msg };
     }
   };
 
   const updateUserData = async (uid: string) => {
     try {
-      const docRef = doc(firestore, "users", uid);
-      const docSnap = await getDoc(docRef);
+      const docSnap = await getDoc(doc(firestore, "users", uid));
       if (docSnap.exists()) {
         const data = docSnap.data();
         const userData = {
@@ -78,15 +85,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: data?.name ?? null,
           image: data?.image ?? null,
           role: data?.role ?? "adopter",
-          petPostIds: data?.petPostIds ?? "", // load petPostIds
+          petPostIds: data?.petPostIds ?? [],
+          favorites: data?.favorites ?? [], // * CRITICAL: Load favorites from DB
+          createdAt: data?.createdAt ?? null,
         } as UserType;
         setUser(userData);
-        console.log("User data loaded from Firestore:", userData);
-      } else {
-        console.log("No Firestore document found for uid:", uid);
       }
     } catch (error: any) {
-      console.error(" Error updating user data:", error.message);
+      console.error("Error updating user data:", error.message);
     }
   };
 
@@ -95,50 +101,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const docRef = doc(firestore, "users", uid);
       await updateDoc(docRef, { role: "seller" });
       setUser((prev) => (prev ? { ...prev, role: "seller" } : prev));
-      console.log("User promoted to seller:", uid);
     } catch (error: any) {
-      console.error(" Error promoting user to seller:", error.message);
+      console.error("Error promoting user:", error.message);
     }
   };
 
-  //  Add PetPostId
   const addPetPostId = async (uid: string, petId: string) => {
     try {
       const docRef = doc(firestore, "users", uid);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const currentIds = docSnap.data()?.petPostIds || "";
-        const updatedIds = currentIds ? `${currentIds}, ${petId}` : petId;
-
-        await updateDoc(docRef, { petPostIds: updatedIds });
-        setUser((prev) => (prev ? { ...prev, petPostIds: updatedIds } : prev));
-        // console.log(" PetPostId added:", petId);
-      }
+      await updateDoc(docRef, {
+        petPostIds: arrayUnion(petId)
+      });
+      setUser((prev) => (prev ? { 
+        ...prev, 
+        petPostIds: [...(prev.petPostIds || []), petId] 
+      } : prev));
     } catch (error: any) {
-      // console.error("Error adding PetPostId:", error.message);
+      console.error("Error adding PetPostId:", error.message);
     }
   };
 
-  // Remove PetPostId
   const removePetPostId = async (uid: string, petId: string) => {
     try {
       const docRef = doc(firestore, "users", uid);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const currentIds = docSnap.data()?.petPostIds || "";
-        const updatedIds = currentIds
-          .split(",")
-          .filter((id: string) => id !== petId)
-          .join(",");
-
-        await updateDoc(docRef, { petPostIds: updatedIds });
-        setUser((prev) => (prev ? { ...prev, petPostIds: updatedIds } : prev));
-        console.log(" PetPostId removed:", petId);
-      }
+      await updateDoc(docRef, {
+        petPostIds: arrayRemove(petId)
+      });
+      setUser((prev) => (prev ? { 
+        ...prev, 
+        petPostIds: (prev.petPostIds || []).filter(id => id !== petId) 
+      } : prev));
     } catch (error: any) {
-      // console.error("Error removing PetPostId:", error.message);
+      console.error("Error removing PetPostId:", error.message);
     }
   };
 
