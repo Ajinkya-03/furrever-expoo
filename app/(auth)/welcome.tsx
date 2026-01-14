@@ -1,92 +1,116 @@
-import Button from '@/components/Button'
-import ScreenWrapper from '@/components/ScreenWrapper'
-import Typo from '@/components/Typo'
-import { colors, spacingX, spacingY } from '@/constants/themes'
-import { verticalScale } from '@/utils/styling'
-import { router } from 'expo-router'
-import React from 'react'
-import { StyleSheet, TouchableOpacity, View } from 'react-native'
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
-const welcome = () => {
+import React, { useCallback, useRef } from 'react';
+import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { useRouter } from 'expo-router';
+
+import Button from '@/components/Button';
+import ScreenWrapper from '@/components/ScreenWrapper';
+import Typo from '@/components/Typo';
+import { colors, spacingX, spacingY, radius } from '@/constants/themes';
+import { verticalScale } from '@/utils/styling';
+
+const Welcome = () => {
+  const router = useRouter();
+  const isNavigating = useRef(false);
+
+  const navigateSafely = useCallback((path: string) => {
+    if (isNavigating.current) return;
+    isNavigating.current = true;
+    router.push(path as any);
+    setTimeout(() => { isNavigating.current = false; }, 800);
+  }, []);
+
   return (
-    <ScreenWrapper>
+    <ScreenWrapper style={{ backgroundColor: colors.background }}>
       <View style={styles.container}>
-        <View>
-          <TouchableOpacity onPress={()=> router.push('/(auth)/login')} style={styles.loginButton}>
-            <Typo fontWeight={"700"} size={20}>Sign in </Typo>
+        {/* Header Actions */}
+        <View style={styles.header}>
+          <TouchableOpacity 
+            onPress={() => navigateSafely('/(tabs)')} 
+            style={styles.guestButton}
+          >
+            <Typo fontWeight="700" color={colors.primaryDark}>Skip</Typo>
           </TouchableOpacity>
-          <Animated.Image
-            entering={FadeIn.duration(1000).springify().damping(12)}
-            source={require('../../assets/welcomeImage.jpg')}
-            style={styles.welcomeImage}
-            resizeMode='contain'
-          />
+          
+          <TouchableOpacity 
+            onPress={() => navigateSafely('/(auth)/login')} 
+            style={styles.loginButton}
+          >
+            <Typo fontWeight="800" size={18} color={colors.text}>Sign in</Typo>
+          </TouchableOpacity>
         </View>
 
+        <Animated.Image
+          entering={FadeIn.duration(1000).springify()}
+          source={require('../../assets/welcomeImage.jpg')}
+          style={styles.welcomeImage}
+          resizeMode='contain'
+        />
+
         <View style={styles.footer}>
-          <Animated.View
-            entering={FadeIn.duration(1000).springify().damping(12)} style={{ alignItems: 'center' }}>
-            <Typo size={30} fontWeight={"800"}>Make pet adoption easier</Typo>
-            <Typo size={30} fontWeight={"800"}>
-              and Trusted with FurrEver
+          <Animated.View entering={FadeInDown.duration(800).springify()}>
+            <Typo size={32} fontWeight="800" style={styles.title}>Make adoption</Typo>
+            <Typo size={32} fontWeight="800" style={styles.title}>easier & trusted</Typo>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(200).duration(800)} style={styles.subtextContainer}>
+            <Typo size={17} color={colors.textLight} style={styles.textCenter}>
+              Your Furry Buddy is one step away.
+            </Typo>
+            <Typo size={17} color={colors.textLight} style={styles.textCenter}>
+              Get verified and authentic pets.
             </Typo>
           </Animated.View>
 
-          <Animated.View entering={FadeInDown.duration(1000).delay(1000).damping(20)} style={{ alignItems: "center", gap: 2 }}>
-            <Typo size={17} color={colors.textLight}>Your Furr Buddy is one step away</Typo>
-            <Typo size={17} color={colors.textLight}>
-              Get verified and authentic pets
-            </Typo>
-            <Animated.View entering={FadeInDown.duration(1000).delay(200).damping(20)} style={styles.buttonContainer}>
-              <Button onPress={()=> router.push('/(auth)/register')}>
-                <Typo size={22} color={colors.background} fontWeight={"600"}>
-                  Get Started
-                </Typo>
-              </Button>
-            </Animated.View>
+          <Animated.View entering={FadeInDown.delay(400).duration(800)} style={styles.buttonContainer}>
+            <Button onPress={() => navigateSafely('/(auth)/register')}>
+              <Typo size={20} color={colors.white} fontWeight="700">Get Started</Typo>
+            </Button>
           </Animated.View>
-
         </View>
       </View>
     </ScreenWrapper>
-  )
-}
+  );
+};
 
-export default welcome
+export default Welcome;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "space-between",
-    paddingTop: spacingY._10,
-
+  container: { flex: 1, justifyContent: "space-between" },
+  header: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: spacingX._20, 
+    paddingTop: spacingY._10 
   },
+  guestButton: { 
+    paddingVertical: 8, 
+    paddingHorizontal: 15, 
+    backgroundColor: colors.primarySoft, 
+    borderRadius: radius._30 
+  },
+  loginButton: { paddingVertical: 8 },
   welcomeImage: {
     width: "100%",
-    height: verticalScale(300),
+    height: verticalScale(280),
     alignSelf: "center",
-    marginTop: verticalScale(100),
-  },
-  loginButton: {
-    alignSelf: "flex-end",
-    marginRight: spacingX._30,
-  },
-  buttonContainer: {
-    paddingHorizontal: spacingX._25,
-    width: '100%',
-    marginTop: spacingY._15,
   },
   footer: {
-    backgroundColor: colors.background,
-    alignItems: "center",
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radius._30,
+    borderTopRightRadius: radius._30,
     paddingTop: verticalScale(30),
     paddingBottom: verticalScale(45),
+    paddingHorizontal: spacingX._25,
     gap: spacingY._20,
-    shadowColor: colors.primaryDark,
-    shadowOffset: { width: 0, height: -10 },
-    elevation: 10,
-    shadowRadius: 30,
-    shadowOpacity: 0.15,
-  }
 
-})
+    ...Platform.select({
+      ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.1, shadowRadius: 20 },
+      android: { elevation: 15 }
+    })
+  },
+  title: { textAlign: 'center', lineHeight: 38 },
+  subtextContainer: { gap: 2 },
+  textCenter: { textAlign: 'center' },
+  buttonContainer: { width: '100%', marginTop: spacingY._10 },
+});

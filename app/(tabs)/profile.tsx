@@ -1,189 +1,167 @@
+import React, { useMemo, useRef, useCallback } from "react";
+import { Alert, StyleSheet, TouchableOpacity, View, ScrollView, Platform } from "react-native";
+import { useRouter } from "expo-router";
+import { Image } from "expo-image";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import * as Haptics from 'expo-haptics';
+import { 
+  User, ChartBar, Lock, Power, CaretRight, 
+  PawPrint, SignIn, UserCirclePlus 
+} from "phosphor-react-native";
+
 import Header from "@/components/Header";
 import ScreenWrapper from "@/components/ScreenWrapper";
 import Typo from "@/components/Typo";
-import { auth } from "@/config/firebase";
 import { colors, radius, spacingX, spacingY } from "@/constants/themes";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProfileImage } from "@/services/imageService";
-import { accountOptionType } from "@/types";
-import { verticalScale } from "@/utils/styling";
-import { Image } from "expo-image";
-import { useRouter } from "expo-router";
-import { signOut } from "firebase/auth";
-import { User, GearSix, Lock, Power, CaretRight } from "phosphor-react-native";
-import React from "react";
-import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import { verticalScale, scale } from "@/utils/styling";
 
-const profile = () => {
-  const { user } = useAuth();
+const Profile = () => {
+  const { user, logout } = useAuth();
   const router = useRouter();
+  const isActionInProgress = useRef(false);
 
-  const accountOptions: accountOptionType[] = [
+  // --- GUEST VIEW LOGIC ---
+  const navigateGuest = (path: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push(path as any);
+  };
+
+  const accountOptions = useMemo(() => [
     {
       title: "Edit Profile",
-      icon: <User size={26} color={colors.background} weight="duotone" />,
+      icon: <User size={24} color="white" weight="fill" />,
       routeName: "/(modals)/profileModal",
       bgColor: colors.blue,
     },
     {
-      title: "Settings",
-      icon: <GearSix size={26} color={colors.background} weight="duotone" />,
-      // routeName: "/(modals)/profileModal",
+      title: "Analytics",
+      icon: <ChartBar size={24} color="white" weight="fill" />,
+      routeName: "/(modals)/userAnalyticsModal",
       bgColor: colors.lightgreen,
     },
     {
       title: "Privacy Policy",
-      icon: <Lock size={26} color={colors.background} weight="duotone" />,
-      // routeName: "/(modals)/profileModal",
-      bgColor: colors.black,
+      icon: <Lock size={24} color="white" weight="fill" />,
+      bgColor: colors.text,
     },
     {
       title: "Log Out",
-      icon: <Power size={26} color={colors.background} weight="duotone" />,
-      // routeName: "/(modals)/profileModal",
+      icon: <Power size={24} color="white" weight="fill" />,
       bgColor: colors.red,
     },
-  ];
+  ], []);
 
-  const handleLogout = async () => {
-    await signOut(auth);
-  };
+  const handlePress = (item: any) => {
+    if (isActionInProgress.current) return;
+    isActionInProgress.current = true;
+    Haptics.selectionAsync();
 
-  const showLogoutAlert = () => {
-    Alert.alert(
-      "Sure You want to Logout?",
-      "Comeback soon your furrBuddy is waiting",
-      [
-        {
-          text: "Cancel",
-          onPress: () => console.log("Cancel Logout"),
-          style: "cancel",
-        },
-        {
-          text: "Logout",
-          onPress: () => handleLogout(),
-          style: "destructive",
-        },
-      ]
-    );
-  };
-
-  const handlePress = (item: accountOptionType) => {
     if (item.title === "Log Out") {
-      showLogoutAlert();
+      Alert.alert("Logout", "Are you sure you want to logout?", [
+        { text: "Cancel", style: "cancel", onPress: () => isActionInProgress.current = false },
+        { text: "Logout", style: "destructive", onPress: () => { logout(); isActionInProgress.current = false; }}
+      ]);
+      return;
     }
-    if (item.routeName) router.push(item.routeName);
+
+    if (item.routeName) {
+      router.push(item.routeName);
+      setTimeout(() => { isActionInProgress.current = false; }, 800);
+    } else {
+      isActionInProgress.current = false;
+    }
   };
+
+  if (!user) {
+    return (
+      <ScreenWrapper style={{ backgroundColor: colors.background }}>
+        <View style={styles.guestContainer}>
+          <View style={styles.playfulIconCircle}>
+            <PawPrint size={scale(70)} color={colors.primary} weight="fill" />
+          </View>
+          <Typo size={30} fontWeight="800" style={styles.textCenter}>Join the Pack!</Typo>
+          <Typo size={16} color={colors.textLighter} style={[styles.textCenter, { marginTop: 10, paddingHorizontal: 20 }]}>
+            Create a profile to save your favorite pets, message sellers, and manage adoptions.
+          </Typo>
+          <View style={styles.guestActionColumn}>
+            <TouchableOpacity style={styles.primaryJoinBtn} onPress={() => navigateGuest('/(auth)/register')}>
+              <UserCirclePlus size={24} color="white" weight="bold" />
+              <Typo color="white" fontWeight="700" size={18}>Get Started</Typo>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryJoinBtn} onPress={() => navigateGuest('/(auth)/login')}>
+              <SignIn size={22} color={colors.primary} weight="bold" />
+              <Typo color={colors.primary} fontWeight="700" size={18}>Sign In</Typo>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScreenWrapper>
+    );
+  }
 
   return (
-    <ScreenWrapper>
-      <View style={styles.container}>
-        <Header title="profile" style={{ marginVertical: spacingY._10 }} />
+    <ScreenWrapper style={{ backgroundColor: colors.background }}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <Header title="Profile" style={{ marginVertical: spacingY._10 }} />
 
         <View style={styles.userInfo}>
-          <View>
-            <Image
-              source={getProfileImage(user?.image)}
-              style={styles.avatar}
-              contentFit="cover"
-              transition={100}
-            />
-          </View>
-
+          <Image
+            source={getProfileImage(user?.image)}
+            style={styles.avatar}
+            contentFit="cover"
+            transition={150}
+          />
           <View style={styles.nameContainer}>
-            <Typo size={24} fontWeight={"600"} color={colors.text}>
-              {user?.name}
-            </Typo>
-            <Typo size={15} fontWeight={"600"} color={colors.textLight}>
-              {user?.email}
-            </Typo>
+            <Typo size={24} fontWeight="800" color={colors.text}>{user?.name}</Typo>
+            <Typo size={15} fontWeight="600" color={colors.textLighter}>{user?.email}</Typo>
           </View>
         </View>
 
         <View style={styles.accountOptions}>
-          {accountOptions.map((item, index) => {
-            return (
-              <Animated.View
-                key={index.toString()}
-                entering={FadeInDown.delay(index * 50)
-                  .springify()
-                  .damping(48)}
-                style={styles.listItem}
-              >
-                <TouchableOpacity
-                  style={styles.profileitemButton}
-                  onPress={() => handlePress(item)}
-                >
-                  <View
-                    style={[
-                      styles.listIcon,
-                      { backgroundColor: item?.bgColor },
-                    ]}
-                  >
-                    {item.icon && item.icon}
-                  </View>
-                  <Typo size={16} style={{ flex: 1 }} fontWeight={"500"}>
-                    {item.title}
-                  </Typo>
-                  <CaretRight
-                    size={verticalScale(20)}
-                    weight="bold"
-                    color={colors.green}
-                  />
-                </TouchableOpacity>
-              </Animated.View>
-            );
-          })}
+          {accountOptions.map((item, index) => (
+            <Animated.View 
+              key={item.title} 
+              entering={FadeInDown.delay(index * 50).springify()}
+              style={styles.listItem}
+            >
+              <TouchableOpacity style={styles.itemButton} onPress={() => handlePress(item)} activeOpacity={0.7}>
+                <View style={[styles.listIcon, { backgroundColor: item.bgColor }]}>
+                  {item.icon}
+                </View>
+                <Typo size={17} style={{ flex: 1 }} fontWeight="700">{item.title}</Typo>
+                <CaretRight size={20} weight="bold" color={colors.gray} />
+              </TouchableOpacity>
+            </Animated.View>
+          ))}
         </View>
-      </View>
+      </ScrollView>
     </ScreenWrapper>
   );
 };
 
-export default profile;
+export default Profile;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: spacingX._20,
-  },
-  userInfo: {
-    marginTop: verticalScale(30),
-    alignItems: "center",
-    gap: spacingY._15,
-  },
-  nameContainer: {
-    gap: verticalScale(4),
-    alignItems: "center",
-  },
+  container: { paddingHorizontal: spacingX._20, paddingBottom: 100 },
+  userInfo: { marginTop: verticalScale(20), alignItems: "center", gap: spacingY._15 },
+  nameContainer: { alignItems: "center" },
   avatar: {
-    alignSelf: "center",
-    backgroundColor: colors.primaryDark,
-    height: verticalScale(135),
-    width: verticalScale(135),
-    borderRadius: 200,
-    borderColor: colors.primary,
-    borderWidth: 1,
-  },
-  accountOptions: {
-    marginTop: spacingY._35,
-  },
-  listItem: {
-    marginBottom: verticalScale(17),
-  },
-  profileitemButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacingX._10,
-  },
-  listIcon: {
-    height: verticalScale(44),
-    width: verticalScale(44),
+    height: verticalScale(130),
+    width: verticalScale(130),
+    borderRadius: 65,
+    borderWidth: 4,
+    borderColor: 'white',
     backgroundColor: colors.backgroundDark,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius._15,
-    borderCurve: "continuous",
   },
+  accountOptions: { marginTop: spacingY._30, backgroundColor: 'white', borderRadius: radius._20, padding: 10 },
+  listItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.background },
+  itemButton: { flexDirection: "row", alignItems: "center", gap: spacingX._15 },
+  listIcon: { height: 44, width: 44, alignItems: "center", justifyContent: "center", borderRadius: 14 },
+  guestContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30 },
+  playfulIconCircle: { width: 140, height: 140, backgroundColor: 'white', borderRadius: 70, justifyContent: 'center', alignItems: 'center', marginBottom: 30, elevation: 10, shadowColor: colors.primary, shadowOpacity: 0.15, shadowRadius: 20 },
+  textCenter: { textAlign: 'center' },
+  guestActionColumn: { width: '100%', marginTop: spacingY._40, gap: spacingY._15 },
+  primaryJoinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.primary, height: 58, borderRadius: radius._20 },
+  secondaryJoinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: 'white', height: 58, borderRadius: radius._20, borderWidth: 2, borderColor: colors.primary }
 });

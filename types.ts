@@ -6,11 +6,11 @@ import {
   TextStyle,
   TouchableOpacityProps,
   ViewStyle,
+  StyleProp,
 } from "react-native";
 
-// --- General UI Component Types ---
 export type ScreenWrapperProps = {
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 };
 
@@ -19,7 +19,7 @@ export type TypoProps = {
   color?: string;
   fontWeight?: TextStyle["fontWeight"];
   children: React.ReactNode;
-  style?: TextStyle | TextStyle[];
+  style?: StyleProp<TextStyle>;
   textProps?: TextProps;
 };
 
@@ -28,36 +28,38 @@ export type accountOptionType = {
   icon: React.ReactNode;
   bgColor: string;
   routeName?: any;
+  onPress?: () => void;
 };
 
 export type HeaderProps = {
   title?: string;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   leftIcon?: ReactNode;
   rightIcon?: ReactNode;
 };
 
 export type BackButtonProps = {
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   iconSize?: number;
 };
 
 export interface InputProps extends TextInputProps {
   icon?: React.ReactNode;
-  containerStyle?: ViewStyle;
-  inputStyle?: TextStyle;
+  containerStyle?: StyleProp<ViewStyle>;
+  inputStyle?: StyleProp<TextStyle>;
   inputRef?: React.RefObject<TextInput>;
 }
 
 export interface CustomButtonProps extends TouchableOpacityProps {
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   loading?: boolean;
   children: React.ReactNode;
+  color?: string;
 }
 
 export type ModalWrapperProps = {
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
   bg?: string;
 };
@@ -71,42 +73,48 @@ export type UploadModalProps = {
   isLoading?: boolean;
 };
 
-// --- Data Types ---
-
 export type UserType = {
-  uid?: string;
-  email?: string | null;
+  uid: string;
+  email: string | null;
   name: string | null;
   image?: any;
-  role?: "adopter" | "seller";
+  role: "adopter" | "seller";
   petPostIds?: string[];
-  favorites?: string[];
+  favorites?: string[] ;
+  adoptedPets?: string[];
   createdAt?: any;
 } | null;
+
+export type UserDataType = {
+  name: string;
+  image: string | any;
+};
 
 export type PetType = {
   id: string;
   name: string;
   category: string;
-  coatcolor?: string;
+  coatcolor: string;
   breed: string;
+  description: string;
+  address: string;
+  image: string | any;
+  ownerId: string;
   age?: number;
-  description?: string;
-  address?: string;
   location?: {
     latitude: number;
     longitude: number;
   };
-  image?: string;
-  ownerId: string; // Required for applications
-  favoredBy?: string[];
-  createdAt?: any;
+  favoredBy: string[];
   status: 'available' | 'sold';
+  adoptedBy?: string;
   isDeleted: boolean;
+  createdAt: any;
   deletedAt?: any;
 };
 
-// * New: Adoption Application Type
+export type CreatePetDTO = Omit<PetType, "id" | "favoredBy" | "status" | "isDeleted" | "createdAt" | "image">;
+
 export type AdoptionType = {
   id: string;
   petId: string;
@@ -115,19 +123,18 @@ export type AdoptionType = {
   adopterId: string;
   adopterName: string;
   ownerId: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled'; 
   createdAt: any;
+  updatedAt?: any; 
 };
 
-// --- Context & Response Types ---
-
-export type CloudinaryResponse = {
+export type ResponseType = {
   success: boolean;
   data?: any;
   msg?: string;
 };
 
-export type ResponseType = {
+export type CloudinaryResponse = {
   success: boolean;
   data?: any;
   msg?: string;
@@ -138,21 +145,19 @@ export type AuthContextType = {
   setUser: React.Dispatch<React.SetStateAction<UserType>>;
   login: (email: string, password: string) => Promise<ResponseType>;
   register: (email: string, password: string, name: string) => Promise<ResponseType>;
-  updateUserData: (userId: string) => Promise<void>;
-  promoteToSeller: (uid: string) => Promise<void>;
-  addPetPostId: (uid: string, petId: string) => Promise<void>;
+  logout: () => Promise<ResponseType>;
+  updateUserData: (uid: string) => Promise<void>;
+  promoteToSeller: (uid: string) => Promise<void>; // Added uid
+  addPetPostId: (uid: string, petId: string) => Promise<void>; // Added uid and petId
   removePetPostId: (uid: string, petId: string) => Promise<void>;
 };
 
 export type PetContextType = {
   pets: PetType[];
-  addPet: (
-    petData: Omit<PetType, "id" | "image" | "createdAt" | "favoredBy" | "status" | "isDeleted">,
-    imageFile: any
-  ) => Promise<CloudinaryResponse>;
-  updatePet: (id: string, updates: Partial<PetType>) => Promise<CloudinaryResponse>;
+  addPet: (petData: CreatePetDTO, imageFile: any) => Promise<CloudinaryResponse>;
+  updatePet: (id: string, updates: Partial<PetType>, imageFile?: any) => Promise<CloudinaryResponse>;
   deletePet: (id: string) => Promise<CloudinaryResponse>;
-  markAsSold: (id: string) => Promise<CloudinaryResponse>;
+  markAsSold: (id: string, adopterId: string) => Promise<CloudinaryResponse>; // Added adopterId
   toggleFavorite: (petId: string) => Promise<void>;
 };
 
@@ -160,14 +165,13 @@ export type AdoptionContextType = {
   applications: AdoptionType[];
   loading: boolean;
   sendApplication: (pet: any) => Promise<ResponseType>;
-  cancelApplication: (appId: string) => Promise<ResponseType>; // * Added
+  cancelApplication: (appId: string) => Promise<ResponseType>;
   updateApplicationStatus: (appId: string, petId: string, status: 'approved' | 'rejected') => Promise<ResponseType>;
 };
 
-// --- Other Props ---
 export type SliderProps = {
   id: string;
-  imageUrl: string;
+  imageUrl: any;
   title?: string;
 };
 
@@ -176,18 +180,33 @@ export type CategoryTypeProps = {
   imageUrl: string;
   id: string;
 };
-
 export type ChatRoomType = {
   id: string;
-  participants: string[]; // [uid1, uid2]
+  participants: string[];
+  participantMetadata: {
+    [key: string]: {
+      name: string;
+      image: string;
+    };
+  };
   lastMessage: string;
   updatedAt: any;
-  petId?: string; // Optional: Link chat to a specific pet
+  lastRead: {
+    [key: string]: any;
+  };
+};
+
+export type ChatContextType = {
+  rooms: ChatRoomType[];
+  loadingRooms: boolean;
+  getOrCreateChatRoom: (targetUserId: string, targetName: string, targetImage: string) => Promise<string | null>;
+  markAsRead: (roomId: string) => Promise<void>;
 };
 
 export type MessageType = {
   id: string;
-  text: string;
   senderId: string;
-  createdAt: any;
+  type: 'text' | 'image' | 'location';
+  content: any;
+  createdAt: any; 
 };

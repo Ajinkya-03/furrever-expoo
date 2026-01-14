@@ -5,15 +5,19 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="3f32385b-0729-4ff9-b5f7-5b0d4f438907" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(modals)/PetListModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(modals)/PetListModal.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(tabs)/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/Category.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/Category.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/CategoryCard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/CategoryCard.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ListbyCategory.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ListbyCategory.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/constants/index.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/contexts/PetContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/contexts/PetContext.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/imageService.ts" beforeDir="false" afterPath="$PROJECT_DIR$/services/imageService.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.json" beforeDir="false" afterPath="$PROJECT_DIR$/app.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(modals)/chatScreenModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(modals)/chatScreenModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(modals)/petDetailsModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(modals)/petDetailsModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(modals)/userAnalyticsModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(modals)/userAnalyticsModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/inbox.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/inbox.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/_layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/_layout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/contexts/AdoptionContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/contexts/AdoptionContext.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/contexts/AuthContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/contexts/AuthContext.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/contexts/chatContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/contexts/chatContext.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/types.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />

@@ -1,10 +1,10 @@
-import { auth, firestore } from "@/config/firebase";
-import { AuthContextType, UserType } from "@/types";
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "expo-router";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signOut,
 } from "firebase/auth";
 import {
   arrayRemove,
@@ -15,13 +15,31 @@ import {
   setDoc,
   updateDoc
 } from "firebase/firestore";
-import { createContext, useContext, useEffect, useState } from "react";
+import { auth, firestore } from "@/config/firebase";
+import { AuthContextType, UserType, ResponseType } from "@/types";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserType | null>(null);
   const router = useRouter();
+
+  const updateUserData = useCallback(async (uid: string) => {
+    if (!uid) return;
+    try {
+      const docSnap = await getDoc(doc(firestore, "users", uid));
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        // FORCE NEW REFERENCE: Creates a brand new object in memory
+        // This is critical for index.tsx to detect the change
+        setUser({ ...data } as UserType);
+      }
+    } catch (error: any) {
+      if (!error.message.includes("permission-denied")) {
+        console.error("[Auth Fetch Error]:", error.message);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -33,129 +51,85 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         router.replace("/(auth)/welcome");
       }
     });
-    return () => unsub();
-  }, []);
+    return unsub;
+  }, [updateUserData]);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<ResponseType> => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
-      if (msg.includes("(auth/invalid-credential)")) msg = "Wrong credentials";
-      if (msg.includes("(auth/invalid-email)")) msg = "Please enter a valid email id";
+      if (msg.includes("invalid-credential")) msg = "Wrong email or password";
       return { success: false, msg };
     }
   };
 
-  const register = async (email: string, password: string, name: string) => {
+  const register = async (email: string, password: string, name: string): Promise<ResponseType> => {
     try {
       const response = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = response?.user?.uid;
-
+      const uid = response.user.uid;
       const userData = {
-        name,
-        email,
-        uid,
+        name, email, uid,
         role: "adopter",
         petPostIds: [],
-        favorites: [], // * Initialize empty favorites array in DB
+        favorites: [],
+        adoptedPets: [],
         createdAt: serverTimestamp(),
       };
-
       await setDoc(doc(firestore, "users", uid), userData);
       return { success: true };
     } catch (error: any) {
-      let msg = error.message;
-      if (msg.includes("(auth/email-already-in-use)")) msg = "This email already exists";
-      if (msg.includes("(auth/invalid-email)")) msg = "Please enter a valid email";
-      if (msg.includes("auth/weak-password")) msg = "Minimum 6 characters required";
-      return { success: false, msg };
+      return { success: false, msg: error.message };
     }
   };
 
-  const updateUserData = async (uid: string) => {
-    try {
-      const docSnap = await getDoc(doc(firestore, "users", uid));
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const userData = {
-          uid: data?.uid ?? null,
-          email: data?.email ?? null,
-          name: data?.name ?? null,
-          image: data?.image ?? null,
-          role: data?.role ?? "adopter",
-          petPostIds: data?.petPostIds ?? [],
-          favorites: data?.favorites ?? [], // * CRITICAL: Load favorites from DB
-          createdAt: data?.createdAt ?? null,
-        } as UserType;
-        setUser(userData);
-      }
-    } catch (error: any) {
-      console.error("Error updating user data:", error.message);
-    }
+  const logout = async () => {
+    setUser(null);
+    await signOut(auth);
+    return { success: true };
   };
 
-  const promoteToSeller = async (uid: string) => {
-    try {
-      const docRef = doc(firestore, "users", uid);
-      await updateDoc(docRef, { role: "seller" });
-      setUser((prev) => (prev ? { ...prev, role: "seller" } : prev));
-    } catch (error: any) {
-      console.error("Error promoting user:", error.message);
-    }
-  };
-
-  const addPetPostId = async (uid: string, petId: string) => {
-    try {
-      const docRef = doc(firestore, "users", uid);
-      await updateDoc(docRef, {
-        petPostIds: arrayUnion(petId)
-      });
-      setUser((prev) => (prev ? { 
+  // Helper for remote/local updates (Optimistic UI)
+  const updateLocalAndRemote = async (field: string, value: any, isArray: boolean = false, type: 'union' | 'remove' = 'union') => {
+    if (!user?.uid) return;
+    const docRef = doc(firestore, "users", user.uid);
+    const updatePayload = isArray 
+      ? { [field]: type === 'union' ? arrayUnion(value) : arrayRemove(value) }
+      : { [field]: value };
+    
+    await updateDoc(docRef, updatePayload);
+    
+    setUser(prev => {
+      if (!prev) return null;
+      if (!isArray) return { ...prev, [field]: value };
+      const currentArr = (prev as any)[field] || [];
+      return { 
         ...prev, 
-        petPostIds: [...(prev.petPostIds || []), petId] 
-      } : prev));
-    } catch (error: any) {
-      console.error("Error adding PetPostId:", error.message);
-    }
+        [field]: type === 'union' ? [...currentArr, value] : currentArr.filter((id: any) => id !== value) 
+      };
+    });
   };
 
-  const removePetPostId = async (uid: string, petId: string) => {
-    try {
-      const docRef = doc(firestore, "users", uid);
-      await updateDoc(docRef, {
-        petPostIds: arrayRemove(petId)
-      });
-      setUser((prev) => (prev ? { 
-        ...prev, 
-        petPostIds: (prev.petPostIds || []).filter(id => id !== petId) 
-      } : prev));
-    } catch (error: any) {
-      console.error("Error removing PetPostId:", error.message);
-    }
-  };
-
-  const contextValue = {
+  // 1. ALL properties included to satisfy AuthContextType
+  // 2. Dependencies tracked to prevent stale closures
+  const contextValue: AuthContextType = useMemo(() => ({
     user,
     setUser,
     login,
     register,
+    logout,
     updateUserData,
-    promoteToSeller,
-    addPetPostId,
-    removePetPostId,
-  };
+    promoteToSeller: () => updateLocalAndRemote("role", "seller"),
+    addPetPostId: (petId: string) => updateLocalAndRemote("petPostIds", petId, true, 'union'),
+    removePetPostId: (petId: string) => updateLocalAndRemote("petPostIds", petId, true, 'remove'),
+  }), [user, updateUserData]);
 
-  return (
-    <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = (): AuthContextType => {
+export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be wrapped inside AuthProvider");
-  }
+  if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 };

@@ -1,14 +1,11 @@
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
+import { 
+    addDoc, collection, onSnapshot, query, serverTimestamp, 
+    where, doc, updateDoc, getDocs 
+} from "firebase/firestore";
 import { firestore } from "@/config/firebase";
-import { ChatRoomType } from "@/types";
-import { addDoc, collection, getDocs, onSnapshot, query, serverTimestamp, where } from "firebase/firestore";
-import { createContext, useContext, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
-
-type ChatContextType = {
-    getOrCreateChatRoom: (targetUserId: string) => Promise<string | null>;
-    rooms: ChatRoomType[];
-    loadingRooms: boolean;
-};
+import { ChatRoomType, ChatContextType } from "@/types";
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
@@ -24,70 +21,85 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
         }
 
-        // * FIX: Remove where/orderBy to prevent index errors
-        const q = collection(firestore, "chatRooms");
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const allRooms = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date(),
+        const q = query(collection(firestore, "chatRooms"), where("participants", "array-contains", user.uid));
+        return onSnapshot(q, (snap) => {
+            const myRooms = snap.docs.map(d => ({
+                id: d.id,
+                ...d.data(),
+                updatedAt: d.data().updatedAt?.toDate?.() || new Date(),
             })) as ChatRoomType[];
 
-            //  Manual Filter: Only rooms where user is a participant
-            const myRooms = allRooms.filter(room => room.participants.includes(user.uid!));
-
-            //  Manual Sort: Recent chats at the top
-            const sorted = myRooms.sort((a, b) => {
-                const timeA = a.updatedAt instanceof Date ? a.updatedAt.getTime() : 0;
-                const timeB = b.updatedAt instanceof Date ? b.updatedAt.getTime() : 0;
-                return timeB - timeA;
-            });
-
-            setRooms(sorted);
+            setRooms(myRooms.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()));
             setLoadingRooms(false);
         });
-
-        return () => unsubscribe();
     }, [user?.uid]);
 
-    const getOrCreateChatRoom = async (targetUserId: string) => {
+    const markAsRead = useCallback(async (roomId: string) => {
+        if (!user?.uid) return;
+        await updateDoc(doc(firestore, "chatRooms", roomId), {
+            [`lastRead.${user.uid}`]: serverTimestamp()
+        }).catch(() => null);
+    }, [user?.uid]);
+
+    const getOrCreateChatRoom = async (targetUserId: string, targetName: string, targetImage: string) => {
         if (!user?.uid) return null;
+        
+        // 1. Sanitize inputs to prevent Firebase "Unsupported field value: undefined" errors
+        const safeTargetName = targetName || "Pet Owner";
+        const safeTargetImage = targetImage || ""; // Fallback to empty string if undefined
+        const safeUserName = user.name || "User";
+        const safeUserImage = user.image || "";
+
+        // 2. Check if room already exists
+        const q = query(collection(firestore, "chatRooms"), where("participants", "array-contains", user.uid));
+        const snap = await getDocs(q);
+        
+        let foundId = null;
+        snap.forEach(d => { 
+            const participants = d.data().participants;
+            if (participants.includes(targetUserId)) {
+                foundId = d.id;
+            }
+        });
+
+        if (foundId) return foundId;
+
+        // 3. Create new room with sanitized metadata
         try {
-            const q = query(
-                collection(firestore, "chatRooms"),
-                where("participants", "array-contains", user.uid)
-            );
-
-            const querySnapshot = await getDocs(q);
-            let existingRoomId = null;
-
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                if (data.participants.includes(targetUserId)) {
-                    existingRoomId = doc.id;
-                }
-            });
-
-            if (existingRoomId) return existingRoomId;
-
-            const docRef = await addDoc(collection(firestore, "chatRooms"), {
+            const res = await addDoc(collection(firestore, "chatRooms"), {
                 participants: [user.uid, targetUserId],
+                participantMetadata: {
+                    [user.uid]: { 
+                        name: safeUserName, 
+                        image: safeUserImage 
+                    },
+                    [targetUserId]: { 
+                        name: safeTargetName, 
+                        image: safeTargetImage 
+                    }
+                },
                 lastMessage: "Started a conversation",
                 updatedAt: serverTimestamp(),
+                lastRead: { 
+                    [user.uid]: serverTimestamp(), 
+                    [targetUserId]: new Date(0) 
+                }
             });
-            return docRef.id;
+            return res.id;
         } catch (error) {
-            console.error("Error with chatroom:", error);
+            console.error("[ChatContext]: Error creating room", error);
             return null;
         }
     };
 
-    return (
-        <ChatContext.Provider value={{ getOrCreateChatRoom, rooms, loadingRooms }}>
-            {children}
-        </ChatContext.Provider>
-    );
+    const value = useMemo(() => ({ 
+        getOrCreateChatRoom, 
+        markAsRead, 
+        rooms, 
+        loadingRooms 
+    }), [rooms, loadingRooms, markAsRead]);
+
+    return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 };
 
 export const useChat = () => {

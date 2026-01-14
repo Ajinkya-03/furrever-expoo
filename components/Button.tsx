@@ -1,30 +1,59 @@
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import React from "react";
+import React, { useRef } from "react";
+import * as Haptics from 'expo-haptics';
 import { CustomButtonProps } from "@/types";
 import { colors, radius } from "@/constants/themes";
 import { verticalScale } from "@/utils/styling";
 import Loading from "./Loading";
-const Button = ({ style, onPress, loading = false, children }: CustomButtonProps) => {
+
+const Button = ({ 
+  style, 
+  onPress, 
+  loading = false, 
+  children 
+}: CustomButtonProps) => {
+  const busyLock = useRef(false);
+
+  const handlePress = () => {
+    // Safety check: Ensure onPress exists and button isn't busy/loading
+    if (loading || busyLock.current || !onPress) return;
+    
+    busyLock.current = true;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    onPress();
+
+    // Unlock after transition
+    setTimeout(() => {
+      busyLock.current = false;
+    }, 600);
+  };
+
   if (loading) {
     return (
-      <View style={[styles.button, style, { backgroundColor: "transparent" }]}>
-        <Loading/>
+      <View style={[styles.button, styles.disabled, style]}>
+        <Loading color={colors.white} />
       </View>
     );
   }
+
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.button, style]}>
+    <TouchableOpacity 
+      activeOpacity={0.7} 
+      onPress={handlePress} 
+      style={[styles.button, style]}
+    >
       {typeof children === "string" ? (
-        <Text style={{ color: colors.background, fontWeight: "700", fontSize: verticalScale(21) }}>
-          {children}
-        </Text>
+        <Text style={styles.buttonText}>{children}</Text>
       ) : (
-        <Text>{children}</Text>
+        children || null 
       )}
     </TouchableOpacity>
   );
 };
+
 export default Button;
+
 const styles = StyleSheet.create({
   button: {
     backgroundColor: colors.green,
@@ -33,7 +62,14 @@ const styles = StyleSheet.create({
     height: verticalScale(52),
     justifyContent: "center",
     alignItems: "center",
-    padding: 10,
-    width: verticalScale(280),
+    paddingHorizontal: 18,
   },
+  buttonText: { 
+    color: colors.white, 
+    fontWeight: "700", 
+    fontSize: verticalScale(18), 
+  },
+  disabled: {
+    opacity: 0.6,
+  }
 });

@@ -1,17 +1,16 @@
-import { firestore } from "@/config/firebase";
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { 
-  collection, addDoc, doc, updateDoc, 
-  serverTimestamp, onSnapshot, deleteDoc 
+  collection, addDoc, doc, updateDoc, serverTimestamp, 
+  onSnapshot, arrayUnion, query, where, getDocs 
 } from "firebase/firestore";
-import { createContext, useContext, useEffect, useState } from "react";
+import { firestore } from "@/config/firebase";
 import { useAuth } from "./AuthContext";
 import { usePets } from "./PetContext";
 import { AdoptionType, AdoptionContextType, ResponseType } from "@/types";
+import * as Haptics from 'expo-haptics';
 
-// Create the context
 const AdoptionContext = createContext<AdoptionContextType | undefined>(undefined);
 
-//
 export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [applications, setApplications] = useState<AdoptionType[]>([]);
   const [loading, setLoading] = useState(false);
@@ -25,54 +24,51 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     const q = collection(firestore, "adoptions");
-    const unsubscribe = onSnapshot(q, (snap) => {
+    
+    return onSnapshot(q, (snap) => {
       const allApps = snap.docs.map(d => ({ 
         id: d.id, 
         ...d.data(),
-        createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate() : d.data().createdAt
+        createdAt: d.data().createdAt?.toDate?.() || d.data().createdAt 
       } as AdoptionType));
 
-      // Filter: User is either the one who sent it or the one receiving it
-      const myApps = allApps.filter(app => 
-        app.adopterId === user.uid || app.ownerId === user.uid
-      );
+      const filtered = allApps
+        .filter(app => 
+            (app.adopterId === user.uid || app.ownerId === user.uid) && 
+            app.status !== 'cancelled'
+        )
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-      // Sort: Newest first
-      const sorted = myApps.sort((a, b) => {
-        const timeA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
-        const timeB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
-        return timeB - timeA;
-      });
-
-      setApplications(sorted);
+      setApplications(filtered);
     });
-
-    return () => unsubscribe();
   }, [user?.uid]);
 
-  // Helper: Create a notification document in Firestore for the UI to pick up
-  const createNotification = async (receiverId: string, title: string, message: string) => {
-    try {
-      await addDoc(collection(firestore, "notifications"), {
-        receiverId,
-        title,
-        message,
-        isRead: false,
-        createdAt: serverTimestamp()
-      });
-    } catch (e) {
-      console.error("Failed to create notification:", e);
-    }
-  };
-
   const sendApplication = async (pet: any): Promise<ResponseType> => {
-    try {
-      if (!user?.uid) return { success: false, msg: "Please login first" };
-      
-      const exists = applications.some(a => a.petId === pet.id && a.adopterId === user.uid);
-      if (exists) return { success: false, msg: "Application already sent!" };
+    if (!user?.uid) return { success: false, msg: "Login required" };
 
-      setLoading(true);
+    setLoading(true);
+    try {
+      const q = query(
+        collection(firestore, "adoptions"), 
+        where("petId", "==", pet.id), 
+        where("adopterId", "==", user.uid)
+      );
+      const snap = await getDocs(q);
+
+      if (!snap.empty) {
+        const existingDoc = snap.docs[0];
+        const currentStatus = existingDoc.data().status;
+
+        if (currentStatus === 'pending') return { success: false, msg: "Already applied!" };
+        if (currentStatus === 'approved') return { success: false, msg: "Already approved!" };
+
+        await updateDoc(doc(firestore, "adoptions", existingDoc.id), {
+          status: 'pending',
+          createdAt: serverTimestamp()
+        });
+        return { success: true };
+      }
+
       await addDoc(collection(firestore, "adoptions"), {
         petId: pet.id,
         petName: pet.name,
@@ -83,6 +79,7 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         status: 'pending',
         createdAt: serverTimestamp()
       });
+      
       return { success: true };
     } catch (e: any) {
       return { success: false, msg: e.message };
@@ -92,9 +89,13 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const cancelApplication = async (appId: string): Promise<ResponseType> => {
+    setLoading(true);
     try {
-      setLoading(true);
-      await deleteDoc(doc(firestore, "adoptions", appId));
+      await updateDoc(doc(firestore, "adoptions", appId), { 
+        status: 'cancelled',
+        updatedAt: serverTimestamp() 
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return { success: true };
     } catch (e: any) {
       return { success: false, msg: e.message };
@@ -104,25 +105,30 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateApplicationStatus = async (appId: string, petId: string, status: 'approved' | 'rejected') => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const appData = applications.find(a => a.id === appId);
-      if (!appData) throw new Error("Application not found");
+      const app = applications.find(a => a.id === appId);
+      if (!app) throw new Error("Application not found");
 
       await updateDoc(doc(firestore, "adoptions", appId), { status });
       
-      // Notify the Adopter about the status change
-      const title = status === 'approved' ? "Application Approved! 🎉" : "Application Update";
-      const message = status === 'approved' 
-        ? `Your request to adopt ${appData.petName} has been approved.` 
-        : `Your request to adopt ${appData.petName} was declined.`;
-      
-      await createNotification(appData.adopterId, title, message);
-
       if (status === 'approved') {
-        const res = await markAsSold(petId);
-        if (!res.success) throw new Error(res.msg);
+        // FIX: Now passing both petId AND adopterId to markAsSold
+        await markAsSold(petId, app.adopterId); 
+        
+        await updateDoc(doc(firestore, "users", app.adopterId), { 
+          adoptedPets: arrayUnion(petId) 
+        });
       }
+      
+      await addDoc(collection(firestore, "notifications"), {
+        receiverId: app.adopterId,
+        title: status === 'approved' ? "Adoption Approved! 🎉" : "Application Update",
+        message: `Your request for ${app.petName} was ${status} by the owner.`,
+        isRead: false, 
+        createdAt: serverTimestamp()
+      });
+
       return { success: true };
     } catch (e: any) {
       return { success: false, msg: e.message };
@@ -131,21 +137,19 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  return (
-    <AdoptionContext.Provider value={{ 
-      applications, 
-      sendApplication, 
-      cancelApplication, 
-      updateApplicationStatus, 
-      loading 
-    }}>
-      {children}
-    </AdoptionContext.Provider>
-  );
+  const value = useMemo(() => ({ 
+    applications, 
+    sendApplication, 
+    cancelApplication, 
+    updateApplicationStatus, 
+    loading 
+  }), [applications, loading]);
+
+  return <AdoptionContext.Provider value={value}>{children}</AdoptionContext.Provider>;
 };
 
 export const useAdoption = () => {
   const context = useContext(AdoptionContext);
-  if (!context) throw new Error("useAdoption must be wrapped in AdoptionProvider");
+  if (!context) throw new Error("useAdoption must be used within AdoptionProvider");
   return context;
 };
