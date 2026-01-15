@@ -4,14 +4,14 @@ import {
     TouchableOpacity, View, Linking, Platform, ActivityIndicator 
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics'; 
 import {
     ArrowClockwise, Calendar, ChatCircleDots,
     CheckCircle, Envelope, Info, MapPin,
     Palette, PawPrint, SealCheck, Trash, XCircle,
-    Handshake, CaretRight
+    CaretRight
 } from 'phosphor-react-native';
 
 import BackButton from '@/components/BackButton';
@@ -26,9 +26,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/chatContext';
 import { usePets } from '@/contexts/PetContext';
 import { getPetImage } from '@/services/imageService';
-import { PetType } from '@/types';
+import { PetType, UserType } from '@/types';
 import { getTimeElapsed } from '@/utils/date';
-import { verticalScale, scale } from '@/utils/styling';
+import { verticalScale } from '@/utils/styling';
 
 const InfoCard = React.memo(({ icon, label, value }: { icon: React.ReactNode, label: string, value: string | number }) => (
     <View style={styles.gridItem}>
@@ -49,9 +49,9 @@ const PetDetailsModal = () => {
     const isBusy = useRef(false);
 
     const pet = useMemo(() => pets.find((p) => p.id === id) as PetType | undefined, [pets, id]);
-    const [ownerData, setOwnerData] = useState<any>(null);
-    const [adopterData, setAdopterData] = useState<any>(null);
-    const [ownerLoading, setOwnerLoading] = useState(true);
+    const [ownerData, setOwnerData] = useState<UserType | null>(null);
+    const [adopterData, setAdopterData] = useState<UserType | null>(null);
+    const [fetchingData, setFetchingData] = useState(true);
 
     const isSold = pet?.status === 'sold';
     const isOwner = pet?.ownerId === currentUser?.uid;
@@ -60,112 +60,105 @@ const PetDetailsModal = () => {
         applications.find(app => app.petId === pet?.id && app.adopterId === currentUser?.uid)
     , [applications, pet?.id, currentUser?.uid]);
 
-    const hasApplied = !!userApplication;
     const applicationStatus = userApplication?.status;
 
     useEffect(() => {
-        // PERMISSION GUARD: Don't fetch if not logged in or no pet data
         if (!currentUser || !pet?.ownerId) {
-            setOwnerLoading(false);
+            setFetchingData(false);
             return;
         }
 
-        const fetchData = async () => {
-            try {
-                setOwnerLoading(true);
-                // 1. Fetch Owner Data
-                const ownerSnap = await getDoc(doc(firestore, "users", pet.ownerId));
-                if (ownerSnap.exists()) setOwnerData(ownerSnap.data());
+        setFetchingData(true);
+        // Real-time Owner Listener
+        const unsubOwner = onSnapshot(doc(firestore, "users", pet.ownerId), (snap) => {
+            if (snap.exists()) setOwnerData(snap.data() as UserType);
+        }, (err) => console.warn("Permission Guard Triggered"));
 
-                // 2. Fetch Adopter Data (Seller only, if pet is sold)
-                if (isSold && isOwner && pet?.adoptedBy) {
-                    const adopterSnap = await getDoc(doc(firestore, "users", pet.adoptedBy));
-                    if (adopterSnap.exists()) setAdopterData(adopterSnap.data());
-                }
-            } catch (err) {
-                console.error("[Fetch Error]:", err);
-            } finally {
-                setOwnerLoading(false);
-            }
-        };
+        // Real-time Adopter Listener
+        let unsubAdopter = () => {};
+        if (isSold && isOwner && pet?.adoptedBy) {
+            unsubAdopter = onSnapshot(doc(firestore, "users", pet.adoptedBy), (snap) => {
+                if (snap.exists()) setAdopterData(snap.data() as UserType);
+            });
+        }
 
-        fetchData();
-    }, [pet?.ownerId, isSold, isOwner, pet?.adoptedBy, currentUser?.uid]); // Added currentUser.uid to trigger on login
+        setFetchingData(false);
+        return () => { unsubOwner(); unsubAdopter(); };
+    }, [pet?.ownerId, isSold, isOwner, pet?.adoptedBy, currentUser?.uid]);
+
+    const handleThrottledAction = (action: () => void) => {
+        if (isBusy.current) return;
+        isBusy.current = true;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        action();
+        setTimeout(() => { isBusy.current = false; }, 800);
+    };
 
     const handleOwnerProfilePress = useCallback(() => {
-        if (isBusy.current || !pet?.ownerId) return;
-        isBusy.current = true;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        if (isOwner) router.push("/(tabs)/profile");
-        else router.push({ pathname: "/(modals)/userAnalyticsModal", params: { userId: pet.ownerId } });
-        setTimeout(() => { isBusy.current = false; }, 800);
+        if (!pet?.ownerId) return;
+        handleThrottledAction(() => {
+            if (isOwner) router.push("/(tabs)/profile");
+            else router.push({ pathname: "/(modals)/userAnalyticsModal", params: { userId: pet.ownerId! } });
+        });
     }, [pet?.ownerId, isOwner]);
 
     const handleAdopt = useCallback(async () => {
         if (isBusy.current || !pet) return;
         if (!currentUser) {
-            Alert.alert("Join the Pack! 🐾", "Please login to send an adoption request.", [
-                { text: "Later", style: "cancel" },
-                { text: "Sign In", onPress: () => router.push("/(auth)/login") }
-            ]);
+            handleThrottledAction(() => router.push("/(auth)/login"));
             return;
         }
         isBusy.current = true;
         const res = await sendApplication(pet);
         if (res.success) Alert.alert("Success", "Request sent!");
-        else Alert.alert("Notice", res.msg);
         setTimeout(() => { isBusy.current = false; }, 1000);
     }, [currentUser, pet, sendApplication]);
 
+    const handleChatPress = useCallback(async () => {
+        if (isBusy.current || !currentUser || !pet?.ownerId) return;
+        isBusy.current = true;
+        try {
+            const roomId = await getOrCreateChatRoom(pet.ownerId, ownerData?.name || "Owner", ownerData?.image || "");
+            if (roomId) {
+                router.push({
+                    pathname: "/(modals)/chatScreenModal",
+                    params: { roomId, otherUserId: pet.ownerId, otherUserName: ownerData?.name }
+                });
+            }
+        } finally { setTimeout(() => { isBusy.current = false; }, 800); }
+    }, [currentUser, pet, ownerData]);
+
     const adoptButtonSection = useMemo(() => {
-        // --- IMPROVED SELLER UI FOR ADOPTER ---
-        if (isOwner && isSold) {
+        if (isOwner && isSold && pet?.adoptedBy) {
             return (
                 <TouchableOpacity 
                     activeOpacity={0.8}
-                    style={styles.adopterInfoCard}
-                    onPress={() => router.push({ pathname: "/(modals)/userAnalyticsModal", params: { userId: pet.adoptedBy }})}
+                    style={styles.adopterPillCard}
+                    onPress={() => handleThrottledAction(() => router.push({ pathname: "/(modals)/userAnalyticsModal", params: { userId: pet.adoptedBy! }}))}
                 >
                     <View style={styles.adopterAvatarWrapper}>
-                        <Image 
-                            source={adopterData?.image ? { uri: adopterData.image } : require('../../assets/Avatar.jpg')} 
-                            style={styles.adopterAvatar} 
-                        />
-                        <View style={styles.checkBadge}>
-                            <CheckCircle size={12} color="white" weight="fill" />
-                        </View>
+                        <Image source={adopterData?.image ? { uri: adopterData.image } : require('../../assets/Avatar.jpg')} style={styles.adopterAvatar} />
+                        <View style={styles.checkBadge}><CheckCircle size={10} color="white" weight="fill" /></View>
                     </View>
                     <View style={{ flex: 1 }}>
-                        <Typo size={12} color={colors.textLight} fontWeight="600">Adopted By</Typo>
-                        <Typo size={16} fontWeight="800" color={colors.text}>{adopterData?.name || 'Loading...'}</Typo>
+                        <Typo size={12} color={colors.textLighter} fontWeight="600">Adopted By</Typo>
+                        <Typo size={16} fontWeight="800" color={colors.text}>{adopterData?.name || 'Buddy Adopter'}</Typo>
                     </View>
-                    <View style={styles.viewProfilePill}>
-                        <Typo size={12} color={colors.primary} fontWeight="700">Profile</Typo>
-                        <CaretRight size={14} color={colors.primary} weight="bold" />
-                    </View>
+                    <CaretRight size={18} color={colors.textLighter} weight="bold" />
                 </TouchableOpacity>
             );
         }
 
         if (isOwner) return (
-            <View style={styles.ownerListingInfo}>
-                <Info size={20} color={colors.primary} />
-                <Typo color={colors.primary} fontWeight="700">This is your listing</Typo>
-            </View>
+            <View style={styles.ownerListingInfo}><Info size={20} color={colors.primary} /><Typo color={colors.primary} fontWeight="700">Your listing</Typo></View>
         );
 
         if (applicationStatus === 'approved') return (
-            <View style={[styles.statusButton, { backgroundColor: colors.green }]}>
-                <CheckCircle size={20} color="white" weight="fill" />
-                <Typo color="white" fontWeight="700">Application Approved</Typo>
-            </View>
+            <View style={[styles.statusButton, { backgroundColor: colors.green }]}><CheckCircle size={20} color="white" weight="fill" /><Typo color="white" fontWeight="700">Application Approved</Typo></View>
         );
 
-        if (hasApplied) return (
-            <TouchableOpacity style={[styles.statusButton, styles.cancelBtn]} onPress={() => cancelApplication(userApplication.id)}>
-                <Trash size={20} color={colors.red} weight="fill" />
-                <Typo color={colors.red} fontWeight="700">Cancel Request</Typo>
-            </TouchableOpacity>
+        if (!!userApplication) return (
+            <TouchableOpacity style={[styles.statusButton, styles.cancelBtn]} onPress={() => handleThrottledAction(() => cancelApplication(userApplication.id))}><Trash size={20} color={colors.red} weight="fill" /><Typo color={colors.red} fontWeight="700">Cancel Request</Typo></TouchableOpacity>
         );
 
         return (
@@ -173,13 +166,13 @@ const PetDetailsModal = () => {
                 <Typo color={colors.white} fontWeight="700" size={18}>Send Adoption Request</Typo>
             </Button>
         );
-    }, [isOwner, isSold, adopterData, applicationStatus, hasApplied, adoptionLoading, handleAdopt, pet?.adoptedBy]);
+    }, [isOwner, isSold, adopterData, applicationStatus, userApplication, adoptionLoading, pet]);
 
-    if (!pet) return <ScreenWrapper style={styles.centered}><ActivityIndicator size="large" color={colors.primary} /></ScreenWrapper>;
+    if (!pet) return <ScreenWrapper style={styles.centered}><ActivityIndicator color={colors.primary} /></ScreenWrapper>;
 
     return (
         <ScreenWrapper style={styles.container}>
-            <View style={styles.headerContainer}><Header title="Pet Details" leftIcon={<BackButton />} /></View>
+            <View style={styles.headerContainer}><Header title="Buddy Details" leftIcon={<BackButton />} /></View>
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 <View style={styles.imageContainer}>
                     <Image source={getPetImage(pet.image)} style={styles.mainImage} contentFit="cover" transition={300} cachePolicy="memory-disk" />
@@ -215,24 +208,24 @@ const PetDetailsModal = () => {
                     <View style={styles.ownerSection}>
                         <Typo size={18} fontWeight="700" style={{ marginBottom: 12 }}>Meet the Owner</Typo>
                         <TouchableOpacity activeOpacity={0.7} onPress={handleOwnerProfilePress} style={styles.ownerCard}>
-                            <Image source={ownerData ? { uri: ownerData.image } : require('../../assets/Avatar.jpg')} style={styles.ownerAvatar} cachePolicy="memory-disk" />
+                            <Image source={ownerData?.image ? { uri: ownerData.image } : require('../../assets/Avatar.jpg')} style={styles.ownerAvatar} cachePolicy="memory-disk" />
                             <View style={styles.ownerDetails}>
-                                <Typo fontWeight="700" size={16}>{ownerData?.name || (ownerLoading ? "..." : "Pet Owner")}</Typo>
-                                <View style={styles.ownerContactRow}>
-                                    <Envelope size={14} color={colors.textLighter} />
-                                    <Text style={styles.verifiedMemberText}>{isOwner ? "You listed this" : "Trusted Member"}</Text>
-                                </View>
+                                <Typo fontWeight="700" size={16}>{ownerData?.name || (fetchingData ? "..." : "Pet Owner")}</Typo>
+                                <View style={styles.roleBadge}><Typo size={10} color={colors.primary} fontWeight="800">{ownerData?.role?.toUpperCase() || 'MEMBER'}</Typo></View>
                             </View>
+                            {!isOwner && !isSold && (
+                                <TouchableOpacity style={styles.chatIcon} onPress={(e) => { e.stopPropagation(); handleChatPress(); }}>
+                                    <ChatCircleDots size={24} color={colors.primary} weight="fill" />
+                                </TouchableOpacity>
+                            )}
                         </TouchableOpacity>
                     </View>
                 </View>
             </ScrollView>
+
             <View style={styles.footer}>
                 {isSold && !isOwner ? (
-                    <View style={styles.unavailableFooter}>
-                        <CheckCircle size={22} color={colors.textLighter} weight="fill" />
-                        <Typo color={colors.textLighter} fontWeight="700">Adopted</Typo>
-                    </View>
+                    <View style={styles.unavailableFooter}><CheckCircle size={22} color={colors.textLighter} weight="fill" /><Typo color={colors.textLighter} fontWeight="700">Adopted</Typo></View>
                 ) : adoptButtonSection}
             </View>
         </ScreenWrapper>
@@ -254,68 +247,27 @@ const styles = StyleSheet.create({
     titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 25 },
     locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
     addressText: { fontSize: 14, color: colors.primary, textDecorationLine: 'underline', fontWeight: '600' },
-    categoryBox: { backgroundColor: colors.primarySoft, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius._10, borderWidth: 1, borderColor: colors.primary + '30' },
+    categoryBox: { backgroundColor: colors.primarySoft, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius._10 },
     grid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30 },
     gridItem: { width: '31%', backgroundColor: colors.white, paddingVertical: 18, borderRadius: radius._20, alignItems: 'center', gap: 5, borderWidth: 1, borderColor: colors.backgroundDark },
     gridValue: { fontSize: 14, fontWeight: '800', color: colors.text },
     ownerSection: { marginTop: 25 },
     ownerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, padding: 15, borderRadius: radius._20, borderWidth: 1, borderColor: colors.backgroundDark },
-    ownerAvatar: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.backgroundDark },
+    ownerAvatar: { width: 54, height: 54, borderRadius: 27 },
     ownerDetails: { flex: 1, marginLeft: 15 },
-    ownerContactRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-    verifiedMemberText: { fontSize: 13, color: colors.textLighter },
+    roleBadge: { alignSelf: 'flex-start', backgroundColor: colors.primarySoft, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginTop: 4 },
+    chatIcon: { backgroundColor: colors.primarySoft, padding: 12, borderRadius: 15 },
     descText: { lineHeight: 24, fontSize: 15, marginBottom: 20 },
     footer: { position: 'absolute', bottom: 0, width: '100%', paddingHorizontal: spacingX._20, paddingBottom: Platform.OS === 'ios' ? spacingY._35 : spacingY._20, backgroundColor: colors.background, height: verticalScale(110), justifyContent: 'center', borderTopWidth: 1, borderTopColor: colors.backgroundDark },
-    adoptBtn: { width: '100%', height: verticalScale(56), borderRadius: radius._17, flexDirection: 'row', gap: 10, justifyContent: 'center', alignItems: 'center' },
+    adoptBtn: { width: '100%', height: verticalScale(56), borderRadius: radius._17, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.green },
     statusButton: { width: '100%', height: verticalScale(56), borderRadius: radius._17, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
     cancelBtn: { backgroundColor: colors.red + '10', borderWidth: 1, borderColor: colors.red },
-    ownerListingInfo: { width: '100%', height: verticalScale(56), backgroundColor: colors.primarySoft, borderRadius: radius._17, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: colors.primary + '20' },
+    ownerListingInfo: { width: '100%', height: verticalScale(56), backgroundColor: colors.primarySoft, borderRadius: radius._17, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
     unavailableFooter: { width: '100%', height: verticalScale(56), backgroundColor: colors.backgroundDark, borderRadius: radius._17, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
-    
-    // --- NEW PREMIUM ADOPTER CARD STYLES ---
-    adopterInfoCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.white,
-        padding: 12,
-        borderRadius: radius._20,
-        borderWidth: 1,
-        borderColor: colors.backgroundDark,
-        elevation: 2,
-        shadowColor: colors.black,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10
-    },
-    adopterAvatarWrapper: {
-        position: 'relative',
-        marginRight: 12
-    },
-    adopterAvatar: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: colors.backgroundDark
-    },
-    checkBadge: {
-        position: 'absolute',
-        bottom: -2,
-        right: -2,
-        backgroundColor: colors.green,
-        borderRadius: 10,
-        padding: 2,
-        borderWidth: 2,
-        borderColor: 'white'
-    },
-    viewProfilePill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.primarySoft,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: radius._12,
-        gap: 4
-    }
+    adopterPillCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, padding: 10, borderRadius: radius._20, borderWidth: 1, borderColor: colors.backgroundDark, gap: 12 },
+    adopterAvatarWrapper: { position: 'relative' },
+    adopterAvatar: { width: 40, height: 40, borderRadius: 20 },
+    checkBadge: { position: 'absolute', bottom: -2, right: -2, backgroundColor: colors.green, borderRadius: 10, padding: 2, borderWidth: 2, borderColor: 'white' }
 });
 
 export default PetDetailsModal;

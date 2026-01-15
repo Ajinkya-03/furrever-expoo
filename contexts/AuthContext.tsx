@@ -111,8 +111,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  // 1. ALL properties included to satisfy AuthContextType
-  // 2. Dependencies tracked to prevent stale closures
   const contextValue: AuthContextType = useMemo(() => ({
     user,
     setUser,

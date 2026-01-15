@@ -150,8 +150,8 @@ const ProfileModal = () => {
                 style={styles.primaryJoinBtn}
                 onPress={() => router.push('/(auth)/register')}
               >
-                <UserCirclePlus size={24} color="white" weight="bold" />
-                <Typo color="white" fontWeight="700" size={18}>Get Started</Typo>
+                <UserCirclePlus size={24} color={colors.background} weight="bold" />
+                <Typo color={colors.background} fontWeight="700" size={18}>Get Started</Typo>
               </TouchableOpacity>
 
               <TouchableOpacity 
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   guestCenterCard: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacingX._30, marginTop: -verticalScale(50) },
   playfulIconCircle: { width: scale(120), height: scale(120), backgroundColor: 'white', borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 25, elevation: 8, shadowColor: colors.primary, shadowOpacity: 0.2, shadowRadius: 15 },
   guestButtonGroup: { width: '100%', marginTop: spacingY._40, gap: spacingY._15 },
-  primaryJoinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.primary, height: verticalScale(58), borderRadius: radius._20, elevation: 5, shadowColor: colors.primary, shadowOpacity: 0.3, shadowRadius: 10 },
+  primaryJoinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.green, height: verticalScale(58), borderRadius: radius._20, elevation: 5, shadowColor: colors.primary, shadowOpacity: 0.3, shadowRadius: 10 },
   secondaryJoinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: 'white', height: verticalScale(58), borderRadius: radius._20, borderWidth: 2, borderColor: colors.primary },
   authHeader: { paddingHorizontal: spacingX._20 },
   avatarWrapper: { alignSelf: "center", marginTop: spacingY._20, position: "relative" },
