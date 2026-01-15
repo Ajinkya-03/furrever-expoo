@@ -4,17 +4,12 @@ import { Platform } from "react-native";
 
 // --- TYPES ---
 export interface NotificationPayload {
-  userId: string;       // Recipient ID
-  title: string;        // Bold text
-  message: string;      // Body text
-  data?: object;        // Extra data for navigation (e.g., { petId: '123' })
+  userId: string;       
+  title: string;       
+  message: string;     
+  data?: object;        
   type?: 'adoption' | 'chat' | 'system';
 }
-
-/**
- * PRODUCTION NOTIFICATION SERVICE
- * Handles both database logging and real-time device push notifications.
- */
 
 // 1. Fetch User's Push Token from Firestore
 const getUserPushToken = async (userId: string): Promise<string | null> => {

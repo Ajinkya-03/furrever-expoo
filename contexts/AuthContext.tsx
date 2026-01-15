@@ -10,7 +10,7 @@ import {
   arrayRemove,
   arrayUnion,
   doc,
-  onSnapshot,
+  onSnapshot, // <--- 1. REAL-TIME LISTENER
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -27,16 +27,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const router = useRouter();
   const segments = useSegments();
 
-  // --- 1. REAL-TIME DATA ENGINE (Keeps devices in sync) ---
+  // --- 1. REAL-TIME DATA ENGINE (Runs Once) ---
   useEffect(() => {
     let unsubscribeFirestore: Unsubscribe | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // User Logged In
+        // --- USER LOGGED IN ---
         const uid = firebaseUser.uid;
         const userDocRef = doc(firestore, "users", uid);
         
+        // [REAL-TIME SYNC]
+        // This listener fires whenever the database changes (Name OR Image).
+        // It updates Device A and Device B instantly.
         unsubscribeFirestore = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
             setUser({ ...docSnap.data(), uid } as UserType);
@@ -44,7 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }, (error) => console.error("Auth Sync Error:", error));
 
       } else {
-        // User Logged Out
+        // --- GUEST / LOGGED OUT ---
         setUser(null);
         if (unsubscribeFirestore) {
           unsubscribeFirestore();
@@ -60,19 +63,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // --- 2. NAVIGATION GUARD (Fixed for Guest Mode) ---
+  // --- 2. NAVIGATION GUARD (Guest Friendly) ---
   useEffect(() => {
     if (!initialized) return;
 
     const inAuthGroup = segments[0] === "(auth)";
     
-    // ONLY Redirect if: User is logged in AND currently on a Login/Register screen
+    // Only redirect if LOGGED IN and on Login/Welcome screen
     if (user && inAuthGroup) {
       router.replace("/(tabs)");
     }
     
-    // [FIX]: Removed the 'else if' block that forced Guests back to Welcome.
-    // Now, clicking "Skip" works because this guard won't stop you.
+    // [FIX] Removed the "else if (!user)" block.
+    // This allows Guests to click "Skip" and stay on the Home screen.
 
   }, [user, segments, initialized]);
 
@@ -113,15 +116,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
         await signOut(auth);
         setUser(null);
-        // [FIX] Manually redirect to Welcome since we removed the auto-guard
-        router.replace("/(auth)/welcome"); 
+        // Manually redirect to Welcome since we removed the auto-guard
+        router.replace("/(auth)/welcome");
         return { success: true };
     } catch (e: any) {
         return { success: false, msg: e.message };
     }
   };
 
-  const updateUserData = async () => {};
+  const updateUserData = async () => {}; // Listener handles this now
 
   const updateLocalAndRemote = async (field: string, value: any, isArray: boolean = false, type: 'union' | 'remove' = 'union') => {
     if (!user?.uid) return;
