@@ -1,6 +1,8 @@
-
-import React, { useRef, useState, useCallback, useMemo } from "react";
-import { FlatList, StyleSheet, View, Alert, TouchableOpacity, Text } from "react-native";
+import React, { useRef, useState, useCallback, useMemo, memo } from "react";
+import { 
+    FlatList, StyleSheet, View, Alert, 
+    TouchableOpacity, Text, RefreshControl 
+} from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from 'expo-haptics';
 import { BellSimple, Plus, PawPrint } from "phosphor-react-native";
@@ -19,18 +21,94 @@ import { usePets } from "@/contexts/PetContext";
 import { useAdoption } from "@/contexts/AdoptionContext";
 import { verticalScale } from "@/utils/styling";
 
+const ListHeader = memo(({ 
+    user, 
+    pendingCount, 
+    selectedCategory, 
+    setSelectedCategory, 
+    handleProtectedAction, 
+    router 
+}: any) => (
+    <View style={{ backgroundColor: colors.background }}>
+        <View style={styles.header}>
+            <View style={{ gap: 4 }}>
+                <Typo size={16} color={colors.text} fontWeight="700">Hey! Pet lover,</Typo>
+                {/* REAL-TIME NAME */}
+                <Typo size={22} color={colors.textLighter} fontWeight="800">
+                    {user?.name || "Guest"}
+                </Typo>
+            </View>
+
+            <View style={styles.headerRight}>
+                <TouchableOpacity 
+                    onPress={() => handleProtectedAction(() => router.push("/(modals)/applicationsModal"))}
+                    style={styles.iconBtn}
+                >
+                    <BellSimple size={28} color={colors.text} weight="duotone" />
+                    {pendingCount > 0 && (
+                        <View style={styles.badgeContainer}>
+                            <Text style={styles.badgeText}>{pendingCount > 9 ? '9+' : pendingCount}</Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => handleProtectedAction(() => router.push("/(tabs)/profile"))}>
+                    <View style={styles.avatarContainer}>
+                        <Image 
+                            source={user?.image ? { uri: user.image } : require("../../assets/Avatar.jpg")} 
+                            style={styles.avatarImage} 
+                            cachePolicy="memory-disk"
+                        />
+                    </View>
+                </TouchableOpacity>
+            </View>
+        </View>
+
+        <Sliders />
+
+        <View style={styles.buttonRow}>
+            <Button 
+                style={[styles.actionBtn, { backgroundColor: colors.primarySoft }]} 
+                onPress={() => handleProtectedAction(() => router.push("/(modals)/PetListModal"))}
+            >
+                <View style={[styles.actionIcon, { backgroundColor: colors.primary }]}>
+                    <Plus size={18} color="white" weight="bold" />
+                </View>
+                <Typo size={14} fontWeight="700" color={colors.primaryDark}>Add Pet</Typo>
+            </Button>
+            
+            <Button 
+                style={[styles.actionBtn, { backgroundColor: colors.successSoft }]} 
+                onPress={() => handleProtectedAction(() => router.push("/(modals)/myPetsModal"))}
+            >
+                <View style={[styles.actionIcon, { backgroundColor: colors.lightgreen }]}>
+                    <PawPrint size={18} color="white" weight="fill" />
+                </View>
+                <Typo size={14} fontWeight="700" color={colors.textLight}>My Pets</Typo>
+            </Button>
+        </View>
+
+        <Category selectedCategory={selectedCategory} onCategorySelect={(cat) => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setSelectedCategory(cat);
+        }} />
+        
+        <Typo size={18} fontWeight="800" style={styles.sectionTitle}>
+            {selectedCategory === "All" ? "New Buddies" : `${selectedCategory} for you`}
+        </Typo>
+    </View>
+));
+
 const Home = () => {
     const { user } = useAuth();
-    const { pets, toggleFavorite } = usePets();
+    const { pets, toggleFavorite } = usePets(); 
     const { applications } = useAdoption();
     const router = useRouter();
 
     const [selectedCategory, setSelectedCategory] = useState<string>("All");
-    
-    // --- Crash Proofing: Action Lock ---
+    const [refreshing, setRefreshing] = useState(false);
     const isActionBusy = useRef(false);
 
-    // --- Logic: Categorization (Filtered from Context array) ---
     const filteredPets = useMemo(() => {
         const active = pets.filter(p => !p.isDeleted && p.status !== 'sold');
         if (selectedCategory === "All") return active;
@@ -41,102 +119,30 @@ const Home = () => {
         return active.filter(p => p.category === selectedCategory);
     }, [pets, selectedCategory]);
 
-    // --- Logic: Throttle Multi-clicks ---
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setTimeout(() => setRefreshing(false), 1000);
+    }, []);
+
     const handleProtectedAction = useCallback((callback: () => void) => {
         if (isActionBusy.current) return;
         isActionBusy.current = true;
-
         if (!user) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             Alert.alert("Join the Pack! 🐾", "Sign in to interact with buddies.", [
                 { text: "Later", style: "cancel", onPress: () => { isActionBusy.current = false; } },
-                { text: "Sign In", onPress: () => { 
-                    isActionBusy.current = false;
-                    router.push("/(auth)/login"); 
-                }}
+                { text: "Sign In", onPress: () => { isActionBusy.current = false; router.push("/(auth)/login"); }}
             ]);
             return;
         }
-
         callback();
-        // Release lock after screen has enough time to push
         setTimeout(() => { isActionBusy.current = false; }, 800);
     }, [user, router]);
 
     const pendingCount = useMemo(() => applications.filter(
         app => app.ownerId === user?.uid && app.status === 'pending'
     ).length, [applications, user?.uid]);
-
-    // --- UI: Header Component ---
-    const renderHeader = () => (
-        <View style={{ backgroundColor: colors.background }}>
-            <View style={styles.header}>
-                <View style={{ gap: 4 }}>
-                    <Typo size={16} color={colors.text} fontWeight="700">Hey! Pet lover,</Typo>
-                    <Typo size={22} color={colors.textLighter} fontWeight="800">
-                        {user?.name || "Guest"}
-                    </Typo>
-                </View>
-
-                <View style={styles.headerRight}>
-                    <TouchableOpacity 
-                        onPress={() => handleProtectedAction(() => router.push("/(modals)/applicationsModal"))}
-                        style={styles.iconBtn}
-                    >
-                        <BellSimple size={28} color={colors.text} weight="duotone" />
-                        {pendingCount > 0 && (
-                            <View style={styles.badgeContainer}>
-                                <Text style={styles.badgeText}>{pendingCount > 9 ? '9+' : pendingCount}</Text>
-                            </View>
-                        )}
-                    </TouchableOpacity>
-
-                    <TouchableOpacity onPress={() => handleProtectedAction(() => router.push("/(tabs)/profile"))}>
-                        <View style={styles.avatarContainer}>
-                            <Image 
-                                source={user?.image ? { uri: user.image } : require("../../assets/Avatar.jpg")} 
-                                style={styles.avatarImage} 
-                                cachePolicy="memory-disk"
-                            />
-                        </View>
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            <Sliders />
-
-            <View style={styles.buttonRow}>
-                <Button 
-                    style={[styles.actionBtn, { backgroundColor: colors.primarySoft }]} 
-                    onPress={() => handleProtectedAction(() => router.push("/(modals)/PetListModal"))}
-                >
-                    <View style={[styles.actionIcon, { backgroundColor: colors.primary }]}>
-                        <Plus size={18} color="white" weight="bold" />
-                    </View>
-                    <Typo size={14} fontWeight="700" color={colors.primaryDark}>Add Pet</Typo>
-                </Button>
-                
-                <Button 
-                    style={[styles.actionBtn, { backgroundColor: colors.successSoft }]} 
-                    onPress={() => handleProtectedAction(() => router.push("/(modals)/myPetsModal"))}
-                >
-                    <View style={[styles.actionIcon, { backgroundColor: colors.lightgreen }]}>
-                        <PawPrint size={18} color="white" weight="fill" />
-                    </View>
-                    <Typo size={14} fontWeight="700" color={colors.textLight}>My Pets</Typo>
-                </Button>
-            </View>
-
-            <Category selectedCategory={selectedCategory} onCategorySelect={(cat) => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setSelectedCategory(cat);
-            }} />
-            
-            <Typo size={18} fontWeight="800" style={styles.sectionTitle}>
-                {selectedCategory === "All" ? "New Buddies" : `${selectedCategory} for you`}
-            </Typo>
-        </View>
-    );
 
     return (
         <ScreenWrapper style={{ backgroundColor: colors.background }}>
@@ -153,8 +159,16 @@ const Home = () => {
                         )}
                     />
                 )}
-                ListHeaderComponent={renderHeader()}
-                // --- Show text message for no more pets ---
+                ListHeaderComponent={
+                    <ListHeader 
+                        user={user}
+                        pendingCount={pendingCount}
+                        selectedCategory={selectedCategory}
+                        setSelectedCategory={setSelectedCategory}
+                        handleProtectedAction={handleProtectedAction}
+                        router={router}
+                    />
+                }
                 ListFooterComponent={() => (
                     <View style={styles.footerContainer}>
                         <Typo color={colors.textLighter} size={14} fontWeight="600">
@@ -162,8 +176,8 @@ const Home = () => {
                         </Typo>
                     </View>
                 )}
-                contentContainerStyle={{ paddingBottom: 50 }}
-                showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}
+                removeClippedSubviews={true} initialNumToRender={6} maxToRenderPerBatch={5} windowSize={10} contentContainerStyle={{ paddingBottom: 50 }} showsVerticalScrollIndicator={false}
             />
         </ScreenWrapper>
     );
