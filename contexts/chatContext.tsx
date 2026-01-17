@@ -22,7 +22,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         const q = query(collection(firestore, "chatRooms"), where("participants", "array-contains", user.uid));
-        return onSnapshot(q, (snap) => {
+        const unsub = onSnapshot(q, (snap) => {
             const myRooms = snap.docs.map(d => ({
                 id: d.id,
                 ...d.data(),
@@ -32,54 +32,50 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setRooms(myRooms.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()));
             setLoadingRooms(false);
         });
+
+        return unsub;
     }, [user?.uid]);
 
+    // Simplified to only update on meaningful sends/closes
     const markAsRead = useCallback(async (roomId: string) => {
         if (!user?.uid) return;
-        await updateDoc(doc(firestore, "chatRooms", roomId), {
-            [`lastRead.${user.uid}`]: serverTimestamp()
-        }).catch(() => null);
+        try {
+            await updateDoc(doc(firestore, "chatRooms", roomId), {
+                [`lastRead.${user.uid}`]: serverTimestamp()
+            });
+        } catch (e) { /* silent fail for background ops */ }
     }, [user?.uid]);
 
     const getOrCreateChatRoom = async (targetUserId: string, targetName: string, targetImage: string) => {
-        if (!user?.uid) return null;
+        if (!user?.uid || !targetUserId) return null;
         
-        // 1. Sanitize inputs to prevent Firebase "Unsupported field value: undefined" errors
         const safeTargetName = targetName || "Pet Owner";
-        const safeTargetImage = targetImage || ""; // Fallback to empty string if undefined
+        const safeTargetImage = targetImage || "";
         const safeUserName = user.name || "User";
         const safeUserImage = user.image || "";
 
-        // 2. Check if room already exists
+        const existing = rooms.find(r => r.participants.includes(targetUserId));
+        if (existing) return existing.id;
+
         const q = query(collection(firestore, "chatRooms"), where("participants", "array-contains", user.uid));
         const snap = await getDocs(q);
-        
         let foundId = null;
         snap.forEach(d => { 
-            const participants = d.data().participants;
-            if (participants.includes(targetUserId)) {
-                foundId = d.id;
-            }
+            if (d.data().participants.includes(targetUserId)) foundId = d.id;
         });
 
         if (foundId) return foundId;
 
-        // 3. Create new room with sanitized metadata
         try {
             const res = await addDoc(collection(firestore, "chatRooms"), {
                 participants: [user.uid, targetUserId],
                 participantMetadata: {
-                    [user.uid]: { 
-                        name: safeUserName, 
-                        image: safeUserImage 
-                    },
-                    [targetUserId]: { 
-                        name: safeTargetName, 
-                        image: safeTargetImage 
-                    }
+                    [user.uid]: { name: safeUserName, image: safeUserImage },
+                    [targetUserId]: { name: safeTargetName, image: safeTargetImage }
                 },
                 lastMessage: "Started a conversation",
                 updatedAt: serverTimestamp(),
+                // Start with past dates so new messages trigger "unread" UI in Inbox
                 lastRead: { 
                     [user.uid]: serverTimestamp(), 
                     [targetUserId]: new Date(0) 
@@ -93,10 +89,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const value = useMemo(() => ({ 
-        getOrCreateChatRoom, 
-        markAsRead, 
-        rooms, 
-        loadingRooms 
+        getOrCreateChatRoom, markAsRead, rooms, loadingRooms 
     }), [rooms, loadingRooms, markAsRead]);
 
     return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

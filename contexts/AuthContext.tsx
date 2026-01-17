@@ -6,6 +6,8 @@ import {
   signOut,
   sendPasswordResetEmail,
   createUserWithEmailAndPassword,
+  sendEmailVerification,
+  updateProfile,
 } from "firebase/auth";
 import {
   doc,
@@ -20,6 +22,7 @@ import {
   arrayRemove,
   setDoc,
   serverTimestamp,
+  getDoc,
 } from "firebase/firestore";
 import { auth, firestore } from "@/config/firebase";
 import { AuthContextType, UserType, ResponseType } from "@/types";
@@ -32,89 +35,141 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const router = useRouter();
   const segments = useSegments();
   const unsubscribeFirestoreRef = useRef<Unsubscribe | null>(null);
+  const isMounted = useRef(true); // Stress-testing guard: Prevents state updates on unmounted components
 
-  // --- AUTO-LOGIN & SESSION LISTENER ---
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (unsubscribeFirestoreRef.current) {
-        unsubscribeFirestoreRef.current();
-        unsubscribeFirestoreRef.current = null;
-      }
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
-      if (firebaseUser) {
-        const uid = firebaseUser.uid;
-        const userDocRef = doc(firestore, "users", uid);
-        
-        unsubscribeFirestoreRef.current = onSnapshot(userDocRef, (docSnap) => {
-          if (docSnap.exists()) {
-            setUser({ ...docSnap.data(), uid } as UserType);
+  const fetchUserData = (uid: string) => {
+    const userDocRef = doc(firestore, "users", uid);
+    
+    // Clean up any existing listener before starting a new one
+    if (unsubscribeFirestoreRef.current) {
+      unsubscribeFirestoreRef.current();
+      unsubscribeFirestoreRef.current = null;
+    }
+
+    unsubscribeFirestoreRef.current = onSnapshot(userDocRef, 
+      (docSnap) => {
+        if (!isMounted.current) return; // Prevent crash if component is unmounted
+
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data) {
+            setUser({ 
+              ...data, 
+              uid, 
+              emailVerified: !!auth.currentUser?.emailVerified 
+            } as UserType);
           }
+        } else if (auth.currentUser) {
+          // Deferred Write Mode: Provide temp state for Gateway
+          setUser({
+            uid,
+            email: auth.currentUser.email || "",
+            name: auth.currentUser.displayName || "User",
+            role: 'adopter',
+            petPostIds: [], favorites: [], adoptedPets: [],
+            emailVerified: false,
+            createdAt: null
+          } as UserType);
+        }
+        setInitialized(true);
+      },
+      (error) => {
+        if (!isMounted.current) return;
+        if (error.code === 'permission-denied') {
           setInitialized(true); 
-        });
+        } else {
+          console.error("Firestore Listener Error:", error);
+        }
+      }
+    );
+  };
+
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        fetchUserData(firebaseUser.uid);
       } else {
-        setUser(null);
-        setInitialized(true); 
+        if (unsubscribeFirestoreRef.current) {
+          unsubscribeFirestoreRef.current();
+          unsubscribeFirestoreRef.current = null;
+        }
+        if (isMounted.current) {
+          setUser(null);
+          setInitialized(true);
+        }
       }
     });
-
     return () => {
       unsubscribeAuth();
       if (unsubscribeFirestoreRef.current) unsubscribeFirestoreRef.current();
     };
   }, []);
 
-  // --- NAVIGATION GUARD ---
   useEffect(() => {
-    if (!initialized) return;
+    if (!initialized || !isMounted.current) return;
     const inAuthGroup = segments[0] === "(auth)";
-    if (user && inAuthGroup) {
+    if (user?.emailVerified && inAuthGroup) {
       router.replace("/(tabs)");
     }
-  }, [user, segments, initialized]);
+  }, [user, initialized]);
 
-  const login = async (email: string, password: string): Promise<ResponseType> => {
+  const updateLocalAndRemote = async (field: string, value: any, isArray = false, type: "union" | "remove" = "union") => {
+    if (!auth.currentUser || !isMounted.current) return;
+    const docRef = doc(firestore, "users", auth.currentUser.uid);
+    const payload = isArray 
+      ? { [field]: type === "union" ? arrayUnion(value) : arrayRemove(value) } 
+      : { [field]: value };
+    
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-      return { success: true };
-    } catch (error: any) {
-      return { success: false, msg: error.code || error.message };
+      await updateDoc(docRef, payload);
+    } catch (e) {
+      console.error(`Error updating ${field}:`, e);
     }
   };
 
   const register = async (email: string, password: string, name: string): Promise<ResponseType> => {
     try {
-      const response = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      const uid = response.user.uid;
-      const userData = {
-        name,
-        email: email.trim(),
-        uid,
-        role: "adopter",
-        petPostIds: [],
-        favorites: [],
-        adoptedPets: [],
-        image: null,
-        createdAt: serverTimestamp(),
-      };
-      await setDoc(doc(firestore, "users", uid), userData);
+      const res = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await updateProfile(res.user, { displayName: name.trim() });
+      await sendEmailVerification(res.user);
       return { success: true };
     } catch (error: any) {
       return { success: false, msg: error.message };
     }
   };
 
-  const resetPassword = async (email: string): Promise<ResponseType> => {
-    try {
-      const trimmedEmail = email.trim().toLowerCase();
-      const usersRef = collection(firestore, "users");
-      const userSnap = await getDocs(query(usersRef, where("email", "==", trimmedEmail)));
-      
-      if (userSnap.empty) return { success: false, msg: "user-not-found" };
+  const reloadUser = async () => {
+    if (!auth.currentUser || !isMounted.current) return;
+    await auth.currentUser.reload();
+    const isVerified = !!auth.currentUser.emailVerified;
 
-      await sendPasswordResetEmail(auth, trimmedEmail);
-      return { success: true };
-    } catch (error: any) {
-      return { success: false, msg: error.code || "error" };
+    if (isVerified) {
+      const userRef = doc(firestore, "users", auth.currentUser.uid);
+      const docSnap = await getDoc(userRef);
+
+      if (!docSnap.exists()) {
+        const userData = {
+          name: auth.currentUser.displayName || "User",
+          email: auth.currentUser.email,
+          uid: auth.currentUser.uid,
+          role: "adopter",
+          petPostIds: [], favorites: [], adoptedPets: [],
+          image: null,
+          emailVerified: true,
+          createdAt: serverTimestamp(),
+        };
+        await setDoc(userRef, userData);
+      } else {
+        await updateDoc(userRef, { emailVerified: true });
+      }
+    }
+    if (isMounted.current) {
+      setUser(prev => prev ? { ...prev, emailVerified: isVerified } : null);
     }
   };
 
@@ -122,26 +177,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (unsubscribeFirestoreRef.current) unsubscribeFirestoreRef.current();
       await signOut(auth);
-      setUser(null);
+      if (isMounted.current) setUser(null);
       router.replace("/(auth)/welcome");
       return { success: true };
     } catch (e: any) { return { success: false, msg: e.message }; }
   };
 
-  const updateLocalAndRemote = async (field: string, value: any, isArray = false, type: "union" | "remove" = "union") => {
-    if (!user?.uid) return;
-    const docRef = doc(firestore, "users", user.uid);
-    const payload = isArray ? { [field]: type === "union" ? arrayUnion(value) : arrayRemove(value) } : { [field]: value };
-    await updateDoc(docRef, payload);
-  };
-
   const contextValue: AuthContextType = useMemo(() => ({
-    user, setUser, login, logout, resetPassword, register,
+    user, setUser, initialized,
+    login: async (e, p) => {
+      try { await signInWithEmailAndPassword(auth, e.trim(), p); return { success: true }; }
+      catch (err: any) { return { success: false, msg: err.code }; }
+    },
+    register, logout, reloadUser,
+    sendVerification: async () => {
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        return { success: true };
+      }
+      return { success: false };
+    },
+    resetPassword: async (email) => {
+      const trimmedEmail = email.trim().toLowerCase();
+      const userSnap = await getDocs(query(collection(firestore, "users"), where("email", "==", trimmedEmail)));
+      if (userSnap.empty) return { success: false, msg: "user-not-found" };
+      await sendPasswordResetEmail(auth, trimmedEmail);
+      return { success: true };
+    },
     updateUserData: async () => {},
-    promoteToSeller: () => updateLocalAndRemote("role", "seller"),
-    addPetPostId: (petId: string) => updateLocalAndRemote("petPostIds", petId, true, "union"),
-    removePetPostId: (petId: string) => updateLocalAndRemote("petPostIds", petId, true, "remove"),
-  }), [user]);
+    promoteToSeller: async () => updateLocalAndRemote("role", "seller"),
+    addPetPostId: async (uid: string, petId: string) => updateLocalAndRemote("petPostIds", petId, true, "union"),
+    removePetPostId: async (uid: string, petId: string) => updateLocalAndRemote("petPostIds", petId, true, "remove"),
+  }), [user, initialized]);
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 };

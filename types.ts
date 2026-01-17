@@ -9,6 +9,8 @@ import {
   StyleProp,
 } from "react-native";
 
+/** --- UI COMPONENT TYPES --- **/
+
 export type ScreenWrapperProps = {
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
@@ -73,6 +75,8 @@ export type UploadModalProps = {
   isLoading?: boolean;
 };
 
+/** --- CORE DATA MODELS --- **/
+
 export type UserType = {
   uid: string;
   email: string;
@@ -83,6 +87,7 @@ export type UserType = {
   adoptedPets: string[];
   image?: string | null;
   createdAt: any;
+  emailVerified: boolean; 
   lastResetAttempts?: number[]; 
 } | null;
 
@@ -114,8 +119,6 @@ export type PetType = {
   deletedAt?: any;
 };
 
-export type CreatePetDTO = Omit<PetType, "id" | "favoredBy" | "status" | "isDeleted" | "createdAt" | "image">;
-
 export type AdoptionType = {
   id: string;
   petId: string;
@@ -129,6 +132,8 @@ export type AdoptionType = {
   updatedAt?: any; 
 };
 
+/** --- API & CONTEXT RESPONSE TYPES --- **/
+
 export type ResponseType = {
   success: boolean;
   data?: any;
@@ -141,13 +146,18 @@ export type CloudinaryResponse = {
   msg?: string;
 };
 
+/** --- CONTEXT TYPES --- **/
+
 export type AuthContextType = {
   user: UserType;
   setUser: React.Dispatch<React.SetStateAction<UserType>>;
+  initialized: boolean;
   login: (email: string, password: string) => Promise<ResponseType>;
   register: (email: string, password: string, name: string) => Promise<ResponseType>;
   logout: () => Promise<ResponseType>;
-  resetPassword: (email: string) => Promise<ResponseType>; // <--- ADD THIS LINE
+  resetPassword: (email: string) => Promise<ResponseType>;
+  sendVerification: () => Promise<ResponseType>;
+  reloadUser: () => Promise<void>;
   updateUserData: (uid: string) => Promise<void>;
   promoteToSeller: (uid: string) => Promise<void>;
   addPetPostId: (uid: string, petId: string) => Promise<void>;
@@ -159,7 +169,7 @@ export type PetContextType = {
   addPet: (petData: CreatePetDTO, imageFile: any) => Promise<CloudinaryResponse>;
   updatePet: (id: string, updates: Partial<PetType>, imageFile?: any) => Promise<CloudinaryResponse>;
   deletePet: (id: string) => Promise<CloudinaryResponse>;
-  markAsSold: (id: string, adopterId: string) => Promise<CloudinaryResponse>; // Added adopterId
+  markAsSold: (id: string, adopterId: string) => Promise<CloudinaryResponse>;
   toggleFavorite: (petId: string) => Promise<void>;
 };
 
@@ -170,6 +180,17 @@ export type AdoptionContextType = {
   cancelApplication: (appId: string) => Promise<ResponseType>;
   updateApplicationStatus: (appId: string, petId: string, status: 'approved' | 'rejected') => Promise<ResponseType>;
 };
+
+export type ChatContextType = {
+  rooms: ChatRoomType[];
+  loadingRooms: boolean;
+  getOrCreateChatRoom: (targetUserId: string, targetName: string, targetImage: string) => Promise<string | null>;
+  markAsRead: (roomId: string) => Promise<void>;
+};
+
+/** --- HELPER TYPES --- **/
+
+export type CreatePetDTO = Omit<PetType, "id" | "favoredBy" | "status" | "isDeleted" | "createdAt" | "image">;
 
 export type SliderProps = {
   id: string;
@@ -182,6 +203,7 @@ export type CategoryTypeProps = {
   imageUrl: string;
   id: string;
 };
+
 export type ChatRoomType = {
   id: string;
   participants: string[];
@@ -196,13 +218,6 @@ export type ChatRoomType = {
   lastRead: {
     [key: string]: any;
   };
-};
-
-export type ChatContextType = {
-  rooms: ChatRoomType[];
-  loadingRooms: boolean;
-  getOrCreateChatRoom: (targetUserId: string, targetName: string, targetImage: string) => Promise<string | null>;
-  markAsRead: (roomId: string) => Promise<void>;
 };
 
 export type MessageType = {
