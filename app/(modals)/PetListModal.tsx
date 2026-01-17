@@ -246,8 +246,8 @@ const PetListModal = () => {
             <View style={styles.inputContainer}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Typo color={colors.text}>Description</Typo>
-                <Typo size={12} color={wordCount < 20 ? colors.red : colors.green}>
-                  {wordCount}/20 words
+                <Typo size={12} color={wordCount < 5 ? colors.red : colors.green}>
+                  {wordCount}/5 words
                 </Typo>
               </View>
               <Input placeholder="Describe your pet..." value={petData.description} multiline containerStyle={{ minHeight: verticalScale(80), alignItems: 'flex-start', paddingTop: 10 }} onChangeText={(v) => setPetData({ ...petData, description: v })} />
