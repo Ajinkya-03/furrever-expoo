@@ -147,7 +147,7 @@ const PetListModal = () => {
       Alert.alert("Pet", "Please fill all required fields");
       return;
     }
-    if (wordCount < 20) return Alert.alert("Description", "Minimum 20 words required.");
+    if (wordCount < 5) return Alert.alert("Description", "Minimum 5 words required.");
 
     setLoading(true);
 
