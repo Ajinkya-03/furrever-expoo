@@ -75,14 +75,15 @@ export type UploadModalProps = {
 
 export type UserType = {
   uid: string;
-  email: string | null;
-  name: string | null;
-  image?: any;
-  role: "adopter" | "seller";
-  petPostIds?: string[];
-  favorites?: string[] ;
-  adoptedPets?: string[];
-  createdAt?: any;
+  email: string;
+  name: string;
+  role: 'adopter' | 'seller' | 'admin';
+  petPostIds: string[];
+  favorites: string[];
+  adoptedPets: string[];
+  image?: string | null;
+  createdAt: any;
+  lastResetAttempts?: number[]; 
 } | null;
 
 export type UserDataType = {
@@ -146,9 +147,10 @@ export type AuthContextType = {
   login: (email: string, password: string) => Promise<ResponseType>;
   register: (email: string, password: string, name: string) => Promise<ResponseType>;
   logout: () => Promise<ResponseType>;
+  resetPassword: (email: string) => Promise<ResponseType>; // <--- ADD THIS LINE
   updateUserData: (uid: string) => Promise<void>;
-  promoteToSeller: (uid: string) => Promise<void>; // Added uid
-  addPetPostId: (uid: string, petId: string) => Promise<void>; // Added uid and petId
+  promoteToSeller: (uid: string) => Promise<void>;
+  addPetPostId: (uid: string, petId: string) => Promise<void>;
   removePetPostId: (uid: string, petId: string) => Promise<void>;
 };
 

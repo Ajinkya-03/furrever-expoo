@@ -1,5 +1,5 @@
-import React, { useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
+import React, { useRef, useState, useCallback } from "react";
+import { Alert, StyleSheet, View, Pressable, KeyboardAvoidingView, Platform, ScrollView, Keyboard } from "react-native";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import * as Haptics from 'expo-haptics';
@@ -14,95 +14,146 @@ import { useAuth } from "@/contexts/AuthContext";
 import { verticalScale } from "@/utils/styling";
 
 const Register = () => {
-  const [formData, setFormData] = useState({ name: "", email: "", password: "" });
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const isSubmitting = useRef(false);
   
+  const isBusy = useRef(false);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const router = useRouter();
   const { register: registerUser } = useAuth();
 
-  const handleSubmit = async () => {
-    if (isSubmitting.current) return;
-
-    if (!formData.name.trim() || !formData.email.trim() || !formData.password.trim()) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      Alert.alert("Sign up", "Please fill all fields to start your journey!");
-      return;
-    }
-
+  // --- THROTTLE ACTIONS (Prevents double taps) ---
+  const handleAction = async (action: () => Promise<void>) => {
+    if (isBusy.current) return;
+    isBusy.current = true;
     try {
-      isSubmitting.current = true;
-      setIsLoading(true);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-      const res = await registerUser(formData.email.trim(), formData.password, formData.name.trim());
-      
-      if (!res.success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        
-        // --- CUSTOM ERROR MAPPING ---
-        let errorMessage = "We couldn't create your account right now.";
-        const errorStr = res.msg?.toLowerCase() || "";
-
-        if (errorStr.includes("email-already-in-use")) {
-          errorMessage = "This email is already part of our pack! Try logging in.";
-        } else if (errorStr.includes("invalid-email")) {
-          errorMessage = "Please enter a valid email address.";
-        } else if (errorStr.includes("weak-password")) {
-          errorMessage = "Your password is too weak. Make it at least 6 characters!";
-        } else if (errorStr.includes("network-request-failed")) {
-          errorMessage = "Network error. Please check your internet connection.";
-        }
-
-        Alert.alert("Sign up", errorMessage);
-      }
+      await action();
     } finally {
-      setIsLoading(false);
-      isSubmitting.current = false;
+      setTimeout(() => { isBusy.current = false; }, 800);
     }
+  };
+
+  // --- INPUT DEBOUNCING & VALIDATION ---
+  const handleNameChange = (text: string) => {
+    // Immediate check for UI feedback, but debounce state update if needed
+    // Limit to 8 characters as requested
+    const filteredName = text.slice(0, 8);
+    setName(filteredName);
+  };
+
+  const handleEmailChange = (text: string) => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      setEmail(text.trim().toLowerCase());
+    }, 150);
+  };
+
+  const handleSubmit = () => {
+    handleAction(async () => {
+      if (!name.trim() || !email.trim() || !password.trim()) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert("Sign up", "Please fill all fields to start your journey!");
+        return;
+      }
+
+      if (password.length < 6) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert("Sign up", "Password must be at least 6 characters.");
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        Keyboard.dismiss();
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+        const res = await registerUser(email, password, name.trim());
+        
+        if (!res.success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          
+          let errorMessage = "We couldn't create your account right now.";
+          const errorStr = res.msg?.toLowerCase() || "";
+
+          if (errorStr.includes("email-already-in-use")) {
+            errorMessage = "This email is already part of our pack! Try logging in.";
+          } else if (errorStr.includes("invalid-email")) {
+            errorMessage = "Please enter a valid email address.";
+          } else if (errorStr.includes("weak-password")) {
+            errorMessage = "Your password is too weak.";
+          }
+
+          Alert.alert("Sign up", errorMessage);
+        } else {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          // Redirection is handled by the AuthContext observer
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    });
   };
 
   return (
     <ScreenWrapper>
-      <View style={styles.container}>
-        <BackButton iconSize={28} />
-        <View style={styles.welcomeText}>
-          <Typo size={30} fontWeight={"800"}>Let's</Typo>
-          <Typo size={30} fontWeight={"800"}>Get Started</Typo>
-        </View>
-        <View style={styles.form}>
-          <Typo size={19} color={colors.textLight}>Create an account</Typo>
-          <Input
-            placeholder="Enter your name"
-            value={formData.name}
-            onChangeText={(v) => setFormData(p => ({...p, name: v}))}
-            icon={<Icons.User size={verticalScale(26)} color={colors.green} weight="fill" />}
-          />
-          <Input
-            placeholder="Enter your email"
-            autoCapitalize="none"
-            value={formData.email}
-            onChangeText={(v) => setFormData(p => ({...p, email: v}))}
-            icon={<Icons.At size={verticalScale(26)} color={colors.green} weight="fill" />}
-          />
-          <Input
-            placeholder="Enter your password"
-            secureTextEntry
-            value={formData.password}
-            onChangeText={(v) => setFormData(p => ({...p, password: v}))}
-            icon={<Icons.Lock size={verticalScale(26)} color={colors.green} weight="fill" />}
-          />
-          <Button loading={isLoading} onPress={handleSubmit} style={styles.signupButton}>
-            <Typo fontWeight={"700"} color={colors.background} size={21}>Sign up</Typo>
-          </Button>
-        </View>
-        <View style={styles.footer}>
-          <Typo size={15} color={colors.text}>Already have an account?</Typo>
-          <Pressable onPress={() => router.push("/(auth)/login")}>
-            <Typo size={15} fontWeight={"700"} color={colors.textLight}>Login</Typo>
-          </Pressable>
-        </View>
-      </View>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"} 
+        style={{ flex: 1 }}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer} 
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <BackButton iconSize={28} />
+          
+          <View style={styles.welcomeText}>
+            <Typo size={30} fontWeight={"800"}>Let's</Typo>
+            <Typo size={30} fontWeight={"800"}>Get Started</Typo>
+          </View>
+
+          <View style={styles.form}>
+            <Typo size={19} color={colors.textLight}>Create an account</Typo>
+            
+            <Input
+              placeholder="Enter your name (Max 8)"
+              value={name}
+              maxLength={8} // Hard limit at the native level
+              onChangeText={handleNameChange}
+              icon={<Icons.User size={verticalScale(26)} color={colors.green} weight="fill" />}
+            />
+
+            <Input
+              placeholder="Enter your email"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              onChangeText={handleEmailChange}
+              icon={<Icons.At size={verticalScale(26)} color={colors.green} weight="fill" />}
+            />
+
+            <Input
+              placeholder="Enter your password"
+              secureTextEntry
+              onChangeText={setPassword}
+              icon={<Icons.Lock size={verticalScale(26)} color={colors.green} weight="fill" />}
+            />
+
+            <Button loading={isLoading} onPress={handleSubmit} style={styles.signupButton}>
+              <Typo fontWeight={"700"} color={colors.background} size={21}>Sign up</Typo>
+            </Button>
+          </View>
+
+          <View style={styles.footer}>
+            <Typo size={15} color={colors.text}>Already have an account?</Typo>
+            <Pressable onPress={() => handleAction(async () => router.push("/(auth)/login"))}>
+              <Typo size={15} fontWeight={"700"} color={colors.textLight}>Login</Typo>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ScreenWrapper>
   );
 };
@@ -110,9 +161,21 @@ const Register = () => {
 export default Register;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, gap: spacingY._30, paddingHorizontal: spacingX._20 },
+  scrollContainer: { 
+    flexGrow: 1, 
+    gap: spacingY._30, 
+    paddingHorizontal: spacingX._20,
+    paddingBottom: spacingY._30 
+  },
   form: { gap: spacingY._20 },
   welcomeText: { marginTop: spacingY._20 },
-  footer: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 5 },
-  signupButton: { alignSelf: "center", width: verticalScale(350) },
+  footer: { 
+    flexDirection: "row", 
+    justifyContent: "center", 
+    alignItems: "center", 
+    gap: 5,
+    marginTop: 'auto',
+    paddingTop: 20
+  },
+  signupButton: { alignSelf: "center", width: verticalScale(350), marginTop: spacingY._10 },
 });

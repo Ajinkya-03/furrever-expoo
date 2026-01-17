@@ -2,7 +2,7 @@ import { ResponseType } from "@/types";
 import axios from "axios";
 
 const API_URL = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
-const UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "signed_preset";
+const UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "unsigned_preset";
 const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${API_URL}/image/upload`;
 
 export const uploadFileToCloudinary = async (

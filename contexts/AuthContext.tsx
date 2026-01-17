@@ -1,20 +1,25 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
 import { useRouter, useSegments } from "expo-router";
 import {
-  createUserWithEmailAndPassword,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
+  sendPasswordResetEmail,
+  createUserWithEmailAndPassword,
 } from "firebase/auth";
 import {
-  arrayRemove,
-  arrayUnion,
   doc,
-  onSnapshot, // <--- 1. REAL-TIME LISTENER
-  serverTimestamp,
-  setDoc,
+  onSnapshot,
+  collection,
+  query,
+  where,
+  getDocs,
+  Unsubscribe,
   updateDoc,
-  Unsubscribe
+  arrayUnion,
+  arrayRemove,
+  setDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { auth, firestore } from "@/config/firebase";
 import { AuthContextType, UserType, ResponseType } from "@/types";
@@ -26,78 +31,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [initialized, setInitialized] = useState(false);
   const router = useRouter();
   const segments = useSegments();
+  const unsubscribeFirestoreRef = useRef<Unsubscribe | null>(null);
 
-  // --- 1. REAL-TIME DATA ENGINE (Runs Once) ---
+  // --- AUTO-LOGIN & SESSION LISTENER ---
   useEffect(() => {
-    let unsubscribeFirestore: Unsubscribe | null = null;
-
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (unsubscribeFirestoreRef.current) {
+        unsubscribeFirestoreRef.current();
+        unsubscribeFirestoreRef.current = null;
+      }
+
       if (firebaseUser) {
-        // --- USER LOGGED IN ---
         const uid = firebaseUser.uid;
         const userDocRef = doc(firestore, "users", uid);
         
-        // [REAL-TIME SYNC]
-        // This listener fires whenever the database changes (Name OR Image).
-        // It updates Device A and Device B instantly.
-        unsubscribeFirestore = onSnapshot(userDocRef, (docSnap) => {
+        unsubscribeFirestoreRef.current = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
             setUser({ ...docSnap.data(), uid } as UserType);
           }
-        }, (error) => console.error("Auth Sync Error:", error));
-
+          setInitialized(true); 
+        });
       } else {
-        // --- GUEST / LOGGED OUT ---
         setUser(null);
-        if (unsubscribeFirestore) {
-          unsubscribeFirestore();
-          unsubscribeFirestore = null;
-        }
+        setInitialized(true); 
       }
-      setInitialized(true);
     });
 
     return () => {
       unsubscribeAuth();
-      if (unsubscribeFirestore) unsubscribeFirestore();
+      if (unsubscribeFirestoreRef.current) unsubscribeFirestoreRef.current();
     };
   }, []);
 
-  // --- 2. NAVIGATION GUARD (Guest Friendly) ---
+  // --- NAVIGATION GUARD ---
   useEffect(() => {
     if (!initialized) return;
-
     const inAuthGroup = segments[0] === "(auth)";
-    
-    // Only redirect if LOGGED IN and on Login/Welcome screen
     if (user && inAuthGroup) {
       router.replace("/(tabs)");
     }
-    
-    // [FIX] Removed the "else if (!user)" block.
-    // This allows Guests to click "Skip" and stay on the Home screen.
-
   }, [user, segments, initialized]);
-
-  // --- ACTIONS ---
 
   const login = async (email: string, password: string): Promise<ResponseType> => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, email.trim(), password);
       return { success: true };
     } catch (error: any) {
-      let msg = error.message;
-      if (msg.includes("invalid-credential")) msg = "Wrong email or password";
-      return { success: false, msg };
+      return { success: false, msg: error.code || error.message };
     }
   };
 
   const register = async (email: string, password: string, name: string): Promise<ResponseType> => {
     try {
-      const response = await createUserWithEmailAndPassword(auth, email, password);
+      const response = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const uid = response.user.uid;
       const userData = {
-        name, email, uid,
+        name,
+        email: email.trim(),
+        uid,
         role: "adopter",
         petPostIds: [],
         favorites: [],
@@ -112,39 +103,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = async () => {
+  const resetPassword = async (email: string): Promise<ResponseType> => {
     try {
-        await signOut(auth);
-        setUser(null);
-        // Manually redirect to Welcome since we removed the auto-guard
-        router.replace("/(auth)/welcome");
-        return { success: true };
-    } catch (e: any) {
-        return { success: false, msg: e.message };
+      const trimmedEmail = email.trim().toLowerCase();
+      const usersRef = collection(firestore, "users");
+      const userSnap = await getDocs(query(usersRef, where("email", "==", trimmedEmail)));
+      
+      if (userSnap.empty) return { success: false, msg: "user-not-found" };
+
+      await sendPasswordResetEmail(auth, trimmedEmail);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, msg: error.code || "error" };
     }
   };
 
-  const updateUserData = async () => {}; // Listener handles this now
+  const logout = async () => {
+    try {
+      if (unsubscribeFirestoreRef.current) unsubscribeFirestoreRef.current();
+      await signOut(auth);
+      setUser(null);
+      router.replace("/(auth)/welcome");
+      return { success: true };
+    } catch (e: any) { return { success: false, msg: e.message }; }
+  };
 
-  const updateLocalAndRemote = async (field: string, value: any, isArray: boolean = false, type: 'union' | 'remove' = 'union') => {
+  const updateLocalAndRemote = async (field: string, value: any, isArray = false, type: "union" | "remove" = "union") => {
     if (!user?.uid) return;
     const docRef = doc(firestore, "users", user.uid);
-    const payload = isArray 
-      ? { [field]: type === 'union' ? arrayUnion(value) : arrayRemove(value) }
-      : { [field]: value };
-    updateDoc(docRef, payload).catch(e => console.error("Remote update failed", e));
+    const payload = isArray ? { [field]: type === "union" ? arrayUnion(value) : arrayRemove(value) } : { [field]: value };
+    await updateDoc(docRef, payload);
   };
 
   const contextValue: AuthContextType = useMemo(() => ({
-    user,
-    setUser,
-    login,
-    register,
-    logout,
-    updateUserData,
+    user, setUser, login, logout, resetPassword, register,
+    updateUserData: async () => {},
     promoteToSeller: () => updateLocalAndRemote("role", "seller"),
-    addPetPostId: (petId: string) => updateLocalAndRemote("petPostIds", petId, true, 'union'),
-    removePetPostId: (petId: string) => updateLocalAndRemote("petPostIds", petId, true, 'remove'),
+    addPetPostId: (petId: string) => updateLocalAndRemote("petPostIds", petId, true, "union"),
+    removePetPostId: (petId: string) => updateLocalAndRemote("petPostIds", petId, true, "remove"),
   }), [user]);
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
