@@ -20,12 +20,9 @@ const Register = () => {
   const [isLoading, setIsLoading] = useState(false);
   
   const isBusy = useRef(false);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const router = useRouter();
   const { register: registerUser } = useAuth();
 
-  // --- THROTTLE ACTIONS (Prevents double taps) ---
   const handleAction = async (action: () => Promise<void>) => {
     if (isBusy.current) return;
     isBusy.current = true;
@@ -36,24 +33,16 @@ const Register = () => {
     }
   };
 
-  // --- INPUT DEBOUNCING & VALIDATION ---
   const handleNameChange = (text: string) => {
-    // Immediate check for UI feedback, but debounce state update if needed
-    // Limit to 8 characters as requested
-    const filteredName = text.slice(0, 8);
-    setName(filteredName);
-  };
-
-  const handleEmailChange = (text: string) => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      setEmail(text.trim().toLowerCase());
-    }, 150);
+    setName(text.slice(0, 8));
   };
 
   const handleSubmit = () => {
     handleAction(async () => {
-      if (!name.trim() || !email.trim() || !password.trim()) {
+      const trimmedEmail = email.trim().toLowerCase();
+      const trimmedName = name.trim();
+
+      if (!trimmedName || !trimmedEmail || !password.trim()) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         Alert.alert("Sign up", "Please fill all fields to start your journey!");
         return;
@@ -70,26 +59,23 @@ const Register = () => {
         Keyboard.dismiss();
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-        const res = await registerUser(email, password, name.trim());
+        const res = await registerUser(trimmedEmail, password, trimmedName);
         
         if (!res.success) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          
-          let errorMessage = "We couldn't create your account right now.";
-          const errorStr = res.msg?.toLowerCase() || "";
+          if (res.msg !== "email-already-in-use") {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            
+            let errorMessage = "We couldn't create your account right now.";
+            const errorStr = res.msg?.toLowerCase() || "";
 
-          if (errorStr.includes("email-already-in-use")) {
-            errorMessage = "This email is already part of our pack! Try logging in.";
-          } else if (errorStr.includes("invalid-email")) {
-            errorMessage = "Please enter a valid email address.";
-          } else if (errorStr.includes("weak-password")) {
-            errorMessage = "Your password is too weak.";
+            if (errorStr.includes("invalid-email")) {
+              errorMessage = "Please enter a valid email address.";
+            } else if (errorStr.includes("weak-password")) {
+              errorMessage = "Your password is too weak. Please use a stronger one.";
+            }
+
+            Alert.alert("Sign up", errorMessage);
           }
-
-          Alert.alert("Sign up", errorMessage);
-        } else {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          // Redirection is handled by the AuthContext observer
         }
       } finally {
         setIsLoading(false);
@@ -121,21 +107,23 @@ const Register = () => {
             <Input
               placeholder="Enter your name (Max 8)"
               value={name}
-              maxLength={8} // Hard limit at the native level
+              maxLength={8}
               onChangeText={handleNameChange}
               icon={<Icons.User size={verticalScale(26)} color={colors.green} weight="fill" />}
             />
 
             <Input
               placeholder="Enter your email"
+              value={email}
               autoCapitalize="none"
               keyboardType="email-address"
-              onChangeText={handleEmailChange}
+              onChangeText={setEmail}
               icon={<Icons.At size={verticalScale(26)} color={colors.green} weight="fill" />}
             />
 
             <Input
               placeholder="Enter your password"
+              value={password}
               secureTextEntry
               onChangeText={setPassword}
               icon={<Icons.Lock size={verticalScale(26)} color={colors.green} weight="fill" />}

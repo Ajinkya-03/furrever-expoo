@@ -17,7 +17,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getProfileImage } from "@/services/imageService";
 import { verticalScale, scale } from "@/utils/styling";
 
-// --- MEMOIZED LIST ITEM ---
 const ProfileItem = memo(({ item, index, onPress }: any) => (
   <Animated.View 
     entering={FadeInDown.delay(index * 50).springify()}
@@ -41,11 +40,9 @@ const Profile = () => {
   const { user, logout } = useAuth();
   const router = useRouter();
   
-  // --- CRASH PROOFING ---
   const isActionInProgress = useRef(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  // --- LOGIC ---
   const handleAction = useCallback(async (item: any) => {
     if (isActionInProgress.current || isLoggingOut) return;
     
@@ -110,6 +107,7 @@ const Profile = () => {
     {
       title: "Privacy Policy",
       icon: <Lock size={24} color="white" weight="fill" />,
+      routeName: "/(modals)/privacyPolicyModal",
       bgColor: colors.text,
     },
     {
@@ -156,7 +154,6 @@ const Profile = () => {
             style={styles.avatar}
             contentFit="cover"
             transition={150}
-            // CRITICAL: Helps new images render immediately
             cachePolicy="memory-disk" 
           />
           <View style={styles.nameContainer}>

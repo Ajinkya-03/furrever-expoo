@@ -24,26 +24,17 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   
   const isBusy = useRef(false);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const router = useRouter();
   const { login: loginUser, resetPassword } = useAuth();
 
-  // Standard action throttle for main UI buttons
   const handleAction = async (action: () => Promise<void>) => {
     if (isBusy.current) return;
     isBusy.current = true;
     try { 
       await action(); 
     } finally { 
-      // Reset busy state after a short delay
       setTimeout(() => { isBusy.current = false; }, 600); 
     }
-  };
-
-  const handleEmailChange = (text: string) => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => setEmail(text.trim().toLowerCase()), 150);
   };
 
   const checkRateLimit = async (): Promise<boolean> => {
@@ -76,33 +67,28 @@ const Login = () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Success", "Reset link sent! Please check your inbox.");
     } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      if (res.msg === "user-not-found") {
-        Alert.alert("Account Not Found", "Would you like to sign up?", [
-          { text: "No", style: "cancel" },
-          { text: "Sign Up", onPress: () => router.push("/(auth)/register") }
-        ]);
-      } else {
-        Alert.alert("Error", "Too many requests. Please try again later.");
+      // Logic for "Account Not Found" is now handled inside AuthContext's resetPassword
+      if (res.msg !== "user-not-found") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Error", "Could not process request. Please try again.");
       }
     }
   };
 
   const handleForgotPassword = useCallback(() => {
     handleAction(async () => {
-      if (!email) {
+      if (!email || email.trim().length === 0) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         Alert.alert("Reset Password", "Please enter your email address first.");
         return;
       }
 
-      // Standard Alert with standard interaction
       Alert.alert(
         "Reset Password", 
-        `Send a link to ${email}?`, 
+        `Send a link to ${email.trim().toLowerCase()}?`, 
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Send Link", onPress: onResetLinkPress } // Directly call the logic
+          { text: "Send Link", onPress: onResetLinkPress }
         ]
       );
     });
@@ -110,19 +96,25 @@ const Login = () => {
 
   const handleLogin = () => {
     handleAction(async () => {
-      if (!email || !password) {
+      const trimmedEmail = email.trim().toLowerCase();
+      if (!trimmedEmail || !password) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         Alert.alert("Login", "Please enter both email and password.");
         return;
       }
+      
       try {
         setIsLoading(true);
         Keyboard.dismiss();
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        const res = await loginUser(email, password);
+        
+        const res = await loginUser(trimmedEmail, password);
+        
         if (!res.success) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          Alert.alert('Login Failed', 'Incorrect email or password.');
+          if (res.msg !== "user-not-found") {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            Alert.alert('Login Failed', 'Incorrect email or password.');
+          }
         }
       } finally { 
         setIsLoading(false); 
@@ -144,12 +136,14 @@ const Login = () => {
             <Input 
                 placeholder="Email" 
                 autoCapitalize="none" 
-                onChangeText={handleEmailChange} 
+                value={email}
+                onChangeText={(text) => setEmail(text)} 
                 icon={<Icons.At size={verticalScale(26)} color={colors.green} weight="fill" />} 
             />
             <Input 
                 placeholder="Password" 
                 secureTextEntry 
+                value={password}
                 onChangeText={setPassword} 
                 icon={<Icons.Lock size={verticalScale(26)} color={colors.green} weight="fill" />} 
             />

@@ -1,13 +1,12 @@
-
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
 import { 
   collection, addDoc, doc, updateDoc, serverTimestamp, 
-  onSnapshot, arrayUnion, query, where, getDocs 
+  onSnapshot, arrayUnion, query, where, getDocs, getDoc, or, writeBatch 
 } from "firebase/firestore";
 import { firestore } from "@/config/firebase";
 import { useAuth } from "./AuthContext";
 import { usePets } from "./PetContext";
-import { AdoptionType, AdoptionContextType, ResponseType } from "@/types";
+import { AdoptionType, AdoptionContextType, ResponseType, PetType } from "@/types";
 import * as Haptics from 'expo-haptics';
 
 const AdoptionContext = createContext<AdoptionContextType | undefined>(undefined);
@@ -24,29 +23,34 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
 
-    const q = collection(firestore, "adoptions");
+    const q = query(
+      collection(firestore, "adoptions"),
+      or(
+        where("adopterId", "==", user.uid),
+        where("ownerId", "==", user.uid)
+      )
+    );
     
-    return onSnapshot(q, (snap) => {
-      const allApps = snap.docs.map(d => ({ 
-        id: d.id, 
-        ...d.data(),
-        createdAt: d.data().createdAt?.toDate?.() || d.data().createdAt 
-      } as AdoptionType));
-
-      const filtered = allApps
-        .filter(app => 
-            (app.adopterId === user.uid || app.ownerId === user.uid) && 
-            app.status !== 'cancelled'
-        )
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const filteredApps = snap.docs
+        .map(d => ({ 
+          id: d.id, 
+          ...d.data(),
+          createdAt: d.data().createdAt?.toDate?.() || d.data().createdAt 
+        } as AdoptionType))
+        .filter(app => app.status !== 'cancelled')
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-      setApplications(filtered);
+      setApplications(filteredApps);
+    }, (error) => {
+      console.error("Adoption Sync Error:", error);
     });
+
+    return () => unsubscribe();
   }, [user?.uid]);
 
-  const sendApplication = async (pet: any): Promise<ResponseType> => {
+  const sendApplication = async (pet: PetType): Promise<ResponseType> => {
     if (!user?.uid) return { success: false, msg: "Login required" };
-
     setLoading(true);
     try {
       const q = query(
@@ -59,7 +63,6 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (!snap.empty) {
         const existingDoc = snap.docs[0];
         const currentStatus = existingDoc.data().status;
-
         if (currentStatus === 'pending') return { success: false, msg: "Already applied!" };
         if (currentStatus === 'approved') return { success: false, msg: "Already approved!" };
 
@@ -111,17 +114,58 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const app = applications.find(a => a.id === appId);
       if (!app) throw new Error("Application not found");
 
-      await updateDoc(doc(firestore, "adoptions", appId), { status });
+      const batch = writeBatch(firestore);
+
+      // 1. Fetch fresh pet details to "freeze" them into the record
+      const petSnap = await getDoc(doc(firestore, "pets", petId));
+      const petData = petSnap.data() as PetType;
+
+      // 2. Prepare the Approved/Rejected update for THIS specific application
+      const mainAppRef = doc(firestore, "adoptions", appId);
+      batch.update(mainAppRef, { 
+        status,
+        petBreed: petData?.breed || "Purebreed",
+        petCategory: petData?.category || "Pet",
+        petColor: petData?.coatcolor || "Standard",
+        petAge: petData?.age || "N/A",
+        updatedAt: serverTimestamp()
+      });
       
       if (status === 'approved') {
-        // FIX: Now passing both petId AND adopterId to markAsSold
+        // --- AUTO-REJECT LOGIC ---
+        // Find ALL other pending applications for this specific pet
+        const otherAppsQuery = query(
+          collection(firestore, "adoptions"),
+          where("petId", "==", petId),
+          where("status", "==", "pending")
+        );
+        const otherAppsSnap = await getDocs(otherAppsQuery);
+
+        otherAppsSnap.docs.forEach((otherDoc) => {
+          if (otherDoc.id !== appId) {
+            // Automatically mark everyone else as rejected
+            batch.update(doc(firestore, "adoptions", otherDoc.id), {
+              status: 'rejected',
+              updatedAt: serverTimestamp(),
+              rejectionReason: "Pet adopted by another member"
+            });
+          }
+        });
+
+        // 3. Mark the Pet as Sold in the database
         await markAsSold(petId, app.adopterId); 
         
-        await updateDoc(doc(firestore, "users", app.adopterId), { 
+        // 4. Add Pet to Adopter's record
+        const adopterUserRef = doc(firestore, "users", app.adopterId);
+        batch.update(adopterUserRef, { 
           adoptedPets: arrayUnion(petId) 
         });
       }
       
+      // Execute the Batch
+      await batch.commit();
+
+      // 5. Notify the adopter
       await addDoc(collection(firestore, "notifications"), {
         receiverId: app.adopterId,
         title: status === 'approved' ? "Adoption Approved! 🎉" : "Application Update",
@@ -130,8 +174,10 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         createdAt: serverTimestamp()
       });
 
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return { success: true };
     } catch (e: any) {
+      console.error("Status Update Error:", e);
       return { success: false, msg: e.message };
     } finally {
       setLoading(false);
@@ -140,10 +186,10 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const value = useMemo(() => ({ 
     applications, 
+    loading,
     sendApplication, 
     cancelApplication, 
     updateApplicationStatus, 
-    loading 
   }), [applications, loading]);
 
   return <AdoptionContext.Provider value={value}>{children}</AdoptionContext.Provider>;

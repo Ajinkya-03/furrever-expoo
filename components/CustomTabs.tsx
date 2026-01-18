@@ -40,7 +40,6 @@ export default function CustomTabs({
     }).length;
   }, [rooms, user?.uid]);
 
-  // Icon configuration moved to a stable object
   const tabbarIcons: Record<string, (isFocused: boolean) => React.ReactNode> = {
     index: (isFocused) => (
       <House 
@@ -97,7 +96,6 @@ export default function CustomTabs({
       isNavigating.current = true;
       navigation.navigate(route.name, route.params);
       
-      // Release lock after transition
       setTimeout(() => {
         isNavigating.current = false;
       }, 500);
@@ -135,7 +133,7 @@ export default function CustomTabs({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 0,
+    bottom: spacingY._17,
     width: '100%',
     alignItems: 'center',
     paddingBottom: Platform.OS === "ios" ? spacingY._25 : spacingY._15,
@@ -155,8 +153,8 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: "row",
     width: "90%",
-    height: verticalScale(64),
-    borderRadius: radius._40, // More playful rounded look
+    height: verticalScale(68),
+    borderRadius: radius._40, 
     overflow: "hidden",
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.6)',
@@ -177,7 +175,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pillActive: {
-    backgroundColor: colors.primarySoft, // Using your new playful tint
+    backgroundColor: colors.primarySoft, 
   },
   badge: {
     position: 'absolute',

@@ -1,14 +1,18 @@
-import React, { useEffect, useRef, useState, memo, useMemo } from 'react';
+import React, { useEffect, useRef, useState, memo, useMemo, useCallback } from 'react';
 import { 
   FlatList, KeyboardAvoidingView, Platform, StyleSheet, 
   TextInput, TouchableOpacity, View, ActivityIndicator, Alert, Linking, Modal
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { 
+  addDoc, collection, doc, onSnapshot, orderBy, 
+  query, serverTimestamp, writeBatch 
+} from 'firebase/firestore';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
+import { useKeepAwake } from 'expo-keep-awake';
 import { 
   PaperPlaneRight, Image as ImageIcon, 
   MapPin, Camera, FilePlus, X, MagnifyingGlassPlus
@@ -25,71 +29,157 @@ import { uploadFileToCloudinary } from '@/services/imageService';
 import { UserType, MessageType } from '@/types';
 
 const ChatScreenModal = () => {
+  useKeepAwake(); 
   const { roomId, otherUserId, otherUserName } = useLocalSearchParams<{ roomId: string; otherUserId: string; otherUserName: string }>();
   const { user } = useAuth();
-  const { markAsRead } = useChat();
   const router = useRouter();
   
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [inputText, setInputText] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [otherUser, setOtherUser] = useState<UserType | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   
+  // Production Guards
   const busyLock = useRef(false);
+  const isMounted = useRef(true);
+  const navigationLock = useRef(false);
+  const lastLocationSent = useRef(0); // Anti-spam tracking
 
-  // FETCH THE CORRECT USER DATA
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
+  // SYNC USER DATA
   useEffect(() => {
     if (!otherUserId) return;
-    const unsub = onSnapshot(doc(firestore, "users", otherUserId), (snap) => {
-      if (snap.exists()) setOtherUser(snap.data() as UserType);
+    return onSnapshot(doc(firestore, "users", otherUserId), (snap) => {
+      if (snap.exists() && isMounted.current) setOtherUser(snap.data() as UserType);
     });
-    return unsub;
   }, [otherUserId]);
 
+  // SYNC MESSAGES
   useEffect(() => {
     if (!roomId) return;
-    markAsRead(roomId);
     const q = query(collection(firestore, `chatRooms/${roomId}/messages`), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() } as MessageType)));
+    return onSnapshot(q, (snap) => {
+      if (isMounted.current) {
+        setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() } as MessageType)));
+      }
     });
-    return unsub;
   }, [roomId]);
 
+  // ATOMIC SEND LOGIC
   const handleSend = async (type: 'text' | 'image' | 'location', content: any) => {
-    if (busyLock.current || (type === 'text' && !inputText.trim())) return;
+    if (busyLock.current || !roomId || !user?.uid) return;
+    if (type === 'text' && !inputText.trim()) return;
+
     busyLock.current = true;
     const messageContent = type === 'text' ? inputText.trim() : content;
+    const batch = writeBatch(firestore);
+
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      await Promise.all([
-        addDoc(collection(firestore, `chatRooms/${roomId}/messages`), {
-          senderId: user?.uid,
-          type,
-          content: messageContent,
-          createdAt: serverTimestamp(),
-        }),
-        updateDoc(doc(firestore, "chatRooms", roomId!), {
-          lastMessage: type === 'text' ? messageContent : `📷 Photo`,
-          updatedAt: serverTimestamp(),
-          [`lastRead.${user?.uid}`]: serverTimestamp()
-        })
-      ]);
-      setInputText("");
-      setShowMenu(false);
+
+      const msgRef = doc(collection(firestore, `chatRooms/${roomId}/messages`));
+      batch.set(msgRef, {
+        senderId: user.uid,
+        type,
+        content: messageContent,
+        createdAt: serverTimestamp(),
+      });
+
+      const roomRef = doc(firestore, "chatRooms", roomId);
+      batch.update(roomRef, {
+        lastMessage: type === 'text' ? messageContent : (type === 'image' ? `📷 Photo` : `📍 Location`),
+        updatedAt: serverTimestamp(),
+        [`lastRead.${user.uid}`]: serverTimestamp()
+      });
+
+      await batch.commit();
+
+      if (type === 'location') lastLocationSent.current = Date.now();
+
+      if (isMounted.current) {
+        setInputText("");
+        setShowMenu(false);
+      }
     } catch (error) {
-      console.error("Chat Action Error:", error);
+      console.error("Send Error:", error);
     } finally {
-      setTimeout(() => { busyLock.current = false; }, 400);
+      setTimeout(() => { busyLock.current = false; }, 500);
+    }
+  };
+
+  // REINFORCED LOCATION LOGIC (ANTI-SPAM + SILENT TIMEOUT)
+  const handleLocation = async () => {
+    if (busyLock.current || locationLoading) return;
+    
+    // Anti-Spam Check
+    const now = Date.now();
+    if (now - lastLocationSent.current < 10000) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert(
+        "Easy there! ✋", 
+        "You just shared your location. Please wait a few seconds before sharing again."
+      );
+      return;
+    }
+
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setLocationLoading(true);
+      busyLock.current = true;
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Permission Needed 📍", "Location access is required to share your coordinates.");
+        return;
+      }
+
+      // Race-Timer for GPS
+      const locationPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("FriendlyTimeout")), 8000)
+      );
+
+      const loc: any = await Promise.race([locationPromise, timeoutPromise]);
+
+      if (loc && loc.coords) {
+        busyLock.current = false; 
+        await handleSend('location', { 
+          lat: loc.coords.latitude, 
+          lng: loc.coords.longitude 
+        });
+        if (isMounted.current) setShowMenu(false);
+      }
+    } catch (error: any) {
+      // Suppress technical log for expected timeouts
+      if (error.message !== "FriendlyTimeout") {
+        console.error("Location Hardware Error:", error);
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        "Pinpointing failed 🛰️", 
+        "We're having trouble finding your signal. Try moving closer to a window or checking your GPS settings."
+      );
+    } finally {
+      if (isMounted.current) {
+        setLocationLoading(false);
+        setTimeout(() => { busyLock.current = false; }, 500);
+      }
     }
   };
 
   const openCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') return Alert.alert("Error", "Camera access denied");
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.7, allowsEditing: true });
     if (!result.canceled) uploadAndSend(result.assets[0]);
   };
 
@@ -101,33 +191,24 @@ const ChatScreenModal = () => {
   const uploadAndSend = async (asset: any) => {
     setUploading(true);
     const res = await uploadFileToCloudinary(asset, 'chat');
-    if (res.success) handleSend('image', res.data);
-    setUploading(false);
+    if (res.success) await handleSend('image', res.data);
+    if (isMounted.current) setUploading(false);
   };
 
-  const handleLocation = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return Alert.alert("Denied", "Location required");
-    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    handleSend('location', { lat: loc.coords.latitude, lng: loc.coords.longitude });
-  };
-
-  const handleProfilePress = () => {
-    if (busyLock.current || !otherUserId) return;
-    busyLock.current = true;
+  const handleProfilePress = useCallback(() => {
+    if (navigationLock.current || !otherUserId) return;
+    navigationLock.current = true;
     Haptics.selectionAsync();
     router.push({ pathname: "/(modals)/userAnalyticsModal", params: { userId: otherUserId }});
-    setTimeout(() => { busyLock.current = false; }, 1000);
-  };
-
-  const isInputEmpty = useMemo(() => inputText.trim().length === 0, [inputText]);
+    setTimeout(() => { navigationLock.current = false; }, 1000);
+  }, [otherUserId]);
 
   return (
     <ScreenWrapper style={styles.container}>
       <View style={styles.header}>
         <BackButton />
-        <TouchableOpacity style={styles.headerInfo} onPress={handleProfilePress} activeOpacity={0.7}>
-          <Image source={otherUser?.image ? { uri: otherUser.image } : require('../../assets/Avatar.jpg')} style={styles.headerAvatar} />
+        <TouchableOpacity style={styles.headerInfo} onPress={handleProfilePress} activeOpacity={0.7} disabled={navigationLock.current}>
+          <Image source={otherUser?.image ? { uri: otherUser.image } : require('../../assets/Avatar.jpg')} style={styles.headerAvatar} contentFit="cover" />
           <View>
             <Typo fontWeight="700" size={17}>{otherUser?.name || otherUserName || "..."}</Typo>
             <Typo size={12} color={colors.primary} fontWeight="700">View Profile</Typo>
@@ -136,40 +217,45 @@ const ChatScreenModal = () => {
         <View style={{ width: 40 }} />
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
         <View style={styles.chatArea}>
-            <FlatList
-              data={messages}
-              inverted
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <MessageBubble item={item} isMine={item.senderId === user?.uid} onImagePress={(uri: string) => setPreviewImage(uri)} />
-              )}
-            />
+          <FlatList
+            data={messages}
+            inverted
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <MessageBubble item={item} isMine={item.senderId === user?.uid} onImagePress={(uri: string) => setPreviewImage(uri)} />
+            )}
+          />
         </View>
 
         <View style={styles.inputSection}>
           {showMenu && (
             <View style={styles.richMenu}>
-              <MenuBtn icon={<ImageIcon color={colors.primary} />} label="Gallery" onPress={openGallery} />
+              <MenuBtn icon={uploading ? <ActivityIndicator size="small" color={colors.primary} /> : <ImageIcon color={colors.primary} />} label="Gallery" onPress={openGallery} />
               <MenuBtn icon={<Camera color={colors.primary} />} label="Camera" onPress={openCamera} />
-              <MenuBtn icon={<MapPin color={colors.primary} />} label="Location" onPress={handleLocation} />
+              <MenuBtn icon={locationLoading ? <ActivityIndicator size="small" color={colors.primary} /> : <MapPin color={colors.primary} />} label={locationLoading ? "Locating..." : "Location"} onPress={handleLocation} />
             </View>
           )}
           <View style={styles.inputBar}>
             <TouchableOpacity onPress={() => { Haptics.selectionAsync(); setShowMenu(!showMenu); }}>
-              {showMenu ? <X size={28} color={colors.textLight} /> : <FilePlus size={28} color={colors.primary} weight="duotone" />}
+              {showMenu ? (
+                <X size={28} color={colors.primary} weight="bold" />
+              ) : (
+                <FilePlus size={28} color={colors.primary} weight="duotone" />
+              )}
             </TouchableOpacity>
             <TextInput value={inputText} onChangeText={setInputText} placeholder="Type message..." style={styles.input} multiline placeholderTextColor={colors.textLighter} />
-            <TouchableOpacity disabled={isInputEmpty || uploading || busyLock.current} onPress={() => handleSend('text', inputText)} style={[styles.sendBtn, { backgroundColor: (isInputEmpty || busyLock.current) ? colors.primary + '40' : colors.primary }]}>
+            <TouchableOpacity disabled={!inputText.trim() || uploading || busyLock.current} onPress={() => handleSend('text', inputText)} style={[styles.sendBtn, { backgroundColor: (!inputText.trim() || busyLock.current) ? colors.primary + '40' : colors.primary }]}>
               {uploading ? <ActivityIndicator color="white" size="small" /> : <PaperPlaneRight color="white" weight="fill" size={20} />}
             </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
 
-      <Modal visible={!!previewImage} transparent={false} animationType="fade">
+      <Modal visible={!!previewImage} transparent={false} animationType="fade" onRequestClose={() => setPreviewImage(null)}>
         <View style={styles.fullScreenPreview}>
           <TouchableOpacity style={styles.closePreview} onPress={() => setPreviewImage(null)}><X size={30} color="white" weight="bold" /></TouchableOpacity>
           <Image source={{ uri: previewImage || '' }} style={styles.previewImage} contentFit="contain" />
@@ -180,29 +266,32 @@ const ChatScreenModal = () => {
 };
 
 const MessageBubble = memo(({ item, isMine, onImagePress }: any) => {
-    const openMap = () => {
-        if (item.type === 'location' && item.content?.lat) {
-            const { lat, lng } = item.content;
-            Linking.openURL(Platform.select({ ios: `maps:0,0?q=${lat},${lng}`, android: `geo:0,0?q=${lat},${lng}` })!);
-        }
-    };
-    return (
-        <View style={[styles.bubble, isMine ? styles.myBubble : styles.theirBubble]}>
-            {item.type === 'text' && <Typo color={isMine ? "white" : colors.text} size={15}>{item.content || ""}</Typo>}
-            {item.type === 'image' && (
-                <TouchableOpacity onPress={() => onImagePress(item.content)} activeOpacity={0.9}>
-                    <Image source={{ uri: item.content }} style={styles.msgImg} transition={200} />
-                    <View style={styles.zoomIcon}><MagnifyingGlassPlus size={18} color="white" /></View>
-                </TouchableOpacity>
-            )}
-            {item.type === 'location' && (
-                <TouchableOpacity style={styles.locationBtn} onPress={openMap}>
-                    <MapPin size={22} color={isMine ? "white" : colors.primary} weight="fill" />
-                    <View><Typo color={isMine ? "white" : colors.text} fontWeight="700">Location Shared</Typo><Typo color={isMine ? "rgba(255,255,255,0.7)" : colors.textLighter} size={11}>Tap for Maps</Typo></View>
-                </TouchableOpacity>
-            )}
-        </View>
-    );
+  const openMap = () => {
+    if (item.type === 'location' && item.content?.lat) {
+      const { lat, lng } = item.content;
+      Linking.openURL(Platform.select({ ios: `maps:0,0?q=${lat},${lng}`, android: `geo:0,0?q=${lat},${lng}` })!);
+    }
+  };
+  return (
+    <View style={[styles.bubble, isMine ? styles.myBubble : styles.theirBubble]}>
+      {item.type === 'text' && <Typo color={isMine ? "white" : colors.text} size={15}>{item.content || ""}</Typo>}
+      {item.type === 'image' && (
+        <TouchableOpacity onPress={() => onImagePress(item.content)} activeOpacity={0.9}>
+          <Image source={{ uri: item.content }} style={styles.msgImg} transition={200} />
+          <View style={styles.zoomIcon}><MagnifyingGlassPlus size={18} color="white" /></View>
+        </TouchableOpacity>
+      )}
+      {item.type === 'location' && (
+        <TouchableOpacity style={styles.locationBtn} onPress={openMap}>
+          <MapPin size={22} color={isMine ? "white" : colors.primary} weight="fill" />
+          <View>
+            <Typo color={isMine ? "white" : colors.text} fontWeight="700">Location Shared</Typo>
+            <Typo color={isMine ? "rgba(255,255,255,0.7)" : colors.textLighter} size={11}>Tap for Maps</Typo>
+          </View>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 });
 
 const MenuBtn = ({ icon, label, onPress }: any) => (
@@ -215,7 +304,7 @@ const MenuBtn = ({ icon, label, onPress }: any) => (
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.backgroundDark, backgroundColor: colors.background },
-  headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, justifyContent: 'flex-start', paddingLeft: spacingX._15 },
+  headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, justifyContent: 'flex-start', paddingLeft: 15 },
   headerAvatar: { width: 40, height: 40, borderRadius: 200, backgroundColor: colors.backgroundDark },
   chatArea: { flex: 1 },
   listContent: { padding: 20, paddingBottom: 10 },
@@ -237,4 +326,4 @@ const styles = StyleSheet.create({
   closePreview: { position: 'absolute', top: 50, right: 20, zIndex: 10 }
 });
 
-export default ChatScreenModal;
+export default ChatScreenModal;8

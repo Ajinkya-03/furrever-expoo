@@ -66,22 +66,15 @@ export type ModalWrapperProps = {
   bg?: string;
 };
 
-export type UploadModalProps = {
-  modalVisible: boolean;
-  onBackPress: () => void;
-  onCameraPress: () => void;
-  onGalleryPress: () => void;
-  onRemovePress: () => void;
-  isLoading?: boolean;
-};
-
 /** --- CORE DATA MODELS --- **/
+
+export type UserRole = 'adopter' | 'seller' | 'admin';
 
 export type UserType = {
   uid: string;
   email: string;
   name: string;
-  role: 'adopter' | 'seller' | 'admin';
+  role: UserRole;
   petPostIds: string[];
   favorites: string[];
   adoptedPets: string[];
@@ -91,10 +84,13 @@ export type UserType = {
   lastResetAttempts?: number[]; 
 } | null;
 
+// Added for the ProfileModal state
 export type UserDataType = {
   name: string;
-  image: string | any;
+  image: string | any | null;
 };
+
+export type PetStatus = 'available' | 'sold';
 
 export type PetType = {
   id: string;
@@ -112,12 +108,14 @@ export type PetType = {
     longitude: number;
   };
   favoredBy: string[];
-  status: 'available' | 'sold';
+  status: PetStatus;
   adoptedBy?: string;
   isDeleted: boolean;
   createdAt: any;
   deletedAt?: any;
 };
+
+export type AdoptionStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 export type AdoptionType = {
   id: string;
@@ -127,12 +125,32 @@ export type AdoptionType = {
   adopterId: string;
   adopterName: string;
   ownerId: string;
-  status: 'pending' | 'approved' | 'rejected' | 'cancelled'; 
+  status: AdoptionStatus; 
   createdAt: any;
-  updatedAt?: any; 
+  updatedAt?: any;
+  petBreed?: string;
+  petCategory?: string;
+  petColor?: string;
+  petAge?: string | number;
 };
 
-/** --- API & CONTEXT RESPONSE TYPES --- **/
+export type CertificateType = {
+  id: string;
+  certificateId: string; 
+  adoptionId: string;
+  petId: string;
+  adopterId: string;
+  adopterName: string;
+  petName: string;
+  petImage: string;
+  breed: string;
+  category: string;
+  color?: string;
+  age?: string | number;
+  issuedAt: any;
+};
+
+/** --- CONTEXT & API RESPONSE TYPES --- **/
 
 export type ResponseType = {
   success: boolean;
@@ -146,7 +164,7 @@ export type CloudinaryResponse = {
   msg?: string;
 };
 
-/** --- CONTEXT TYPES --- **/
+/** --- CONTEXT DEFINITIONS --- **/
 
 export type AuthContextType = {
   user: UserType;
@@ -155,10 +173,9 @@ export type AuthContextType = {
   login: (email: string, password: string) => Promise<ResponseType>;
   register: (email: string, password: string, name: string) => Promise<ResponseType>;
   logout: () => Promise<ResponseType>;
+  reloadUser: () => Promise<void>;
   resetPassword: (email: string) => Promise<ResponseType>;
   sendVerification: () => Promise<ResponseType>;
-  reloadUser: () => Promise<void>;
-  updateUserData: (uid: string) => Promise<void>;
   promoteToSeller: (uid: string) => Promise<void>;
   addPetPostId: (uid: string, petId: string) => Promise<void>;
   removePetPostId: (uid: string, petId: string) => Promise<void>;
@@ -176,9 +193,14 @@ export type PetContextType = {
 export type AdoptionContextType = {
   applications: AdoptionType[];
   loading: boolean;
-  sendApplication: (pet: any) => Promise<ResponseType>;
+  sendApplication: (pet: PetType) => Promise<ResponseType>;
   cancelApplication: (appId: string) => Promise<ResponseType>;
   updateApplicationStatus: (appId: string, petId: string, status: 'approved' | 'rejected') => Promise<ResponseType>;
+};
+
+export type CertificateContextType = {
+  loading: boolean;
+  downloadPDF: (certificate: CertificateType) => Promise<void>;
 };
 
 export type ChatContextType = {
@@ -188,21 +210,9 @@ export type ChatContextType = {
   markAsRead: (roomId: string) => Promise<void>;
 };
 
-/** --- HELPER TYPES --- **/
+/** --- UTILITY & HELPER TYPES --- **/
 
 export type CreatePetDTO = Omit<PetType, "id" | "favoredBy" | "status" | "isDeleted" | "createdAt" | "image">;
-
-export type SliderProps = {
-  id: string;
-  imageUrl: any;
-  title?: string;
-};
-
-export type CategoryTypeProps = {
-  type: string;
-  imageUrl: string;
-  id: string;
-};
 
 export type ChatRoomType = {
   id: string;
@@ -226,4 +236,16 @@ export type MessageType = {
   type: 'text' | 'image' | 'location';
   content: any;
   createdAt: any; 
+};
+
+/** --- NOTIFICATION MODELS --- **/
+
+export type NotificationType = {
+  id: string;
+  receiverId: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: any;
+  type?: 'adoption_update' | 'new_request' | 'chat';
 };

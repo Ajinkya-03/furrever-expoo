@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import {
-  Alert, ScrollView, StyleSheet, TouchableOpacity, View, KeyboardAvoidingView, Platform, Text
+  Alert, ScrollView, StyleSheet, TouchableOpacity, View, KeyboardAvoidingView, Platform
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
@@ -23,7 +23,11 @@ import UploadModal from "./UploadModal";
 import { colors, spacingX, spacingY, radius } from "@/constants/themes";
 import { useAuth } from "@/contexts/AuthContext";
 import { verticalScale, scale } from "@/utils/styling";
-import { UserDataType } from "@/types";
+
+interface ProfileState {
+  name: string;
+  image: string | any | null;
+}
 
 const ProfileModal = () => {
   const { user } = useAuth(); 
@@ -31,7 +35,7 @@ const ProfileModal = () => {
   
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [userData, setUserData] = useState<UserDataType>({ name: "", image: null });
+  const [userData, setUserData] = useState<ProfileState>({ name: "", image: null });
   const busyLock = useRef(false);
 
   useEffect(() => {
@@ -63,7 +67,8 @@ const ProfileModal = () => {
       if (!result.canceled) {
         setLoading(true);
         const processed = await processImage(result.assets[0].uri);
-        setUserData(prev => ({ ...prev, image: processed }));
+        // Fixed: Added type annotation to 'prev'
+        setUserData((prev: ProfileState) => ({ ...prev, image: processed }));
         setLoading(false);
       }
     } finally {
@@ -73,14 +78,14 @@ const ProfileModal = () => {
   };
 
   const handleRemoveImage = () => {
-    setUserData(prev => ({ ...prev, image: null }));
+    // Fixed: Added type annotation to 'prev'
+    setUserData((prev: ProfileState) => ({ ...prev, image: null }));
     setModalVisible(false);
   };
 
   const onSubmit = async () => {
     const trimmedName = userData.name.trim();
     
-    // Validation
     if (!trimmedName) {
         Alert.alert("Required", "Please enter your name.");
         return;
@@ -182,8 +187,9 @@ const ProfileModal = () => {
               <Input 
                 placeholder="Your Name" 
                 value={userData.name} 
-                onChangeText={(text) => setUserData(prev => ({ ...prev, name: text }))}
-                maxLength={8} // <--- LIMITS INPUT TO 8 CHARS
+                // Fixed: Added type annotation to 'prev'
+                onChangeText={(text) => setUserData((prev: ProfileState) => ({ ...prev, name: text }))}
+                maxLength={8} 
               />
             </View>
           </View>
@@ -206,6 +212,7 @@ const ProfileModal = () => {
     </ModalWrapper>
   );
 };
+
 export default ProfileModal;
 
 const styles = StyleSheet.create({

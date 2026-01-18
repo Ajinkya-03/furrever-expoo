@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { InteractionManager } from 'react-native';
 import { 
   collection, doc, onSnapshot, query, serverTimestamp, 
   setDoc, updateDoc, writeBatch, arrayUnion, arrayRemove, 
@@ -15,21 +16,15 @@ const CACHE_KEY = "cached_pets_list";
 
 export const PetProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [pets, setPets] = useState<PetType[]>([]);
-  const { user, setUser, promoteToSeller, addPetPostId } = useAuth();
+  const { user, promoteToSeller, addPetPostId } = useAuth();
   const isMounted = useRef(true);
 
-  // --- 1. CLEANUP ON UNMOUNT ---
   useEffect(() => {
     isMounted.current = true;
     return () => { isMounted.current = false; };
   }, []);
 
-  // --- 2. REAL-TIME ASYNC ENGINE ---
   useEffect(() => {
-    // [CHANGE]: Removed the "if (!user) return" check.
-    // Now creates a listener for everyone (Guests included).
-
-    // A. Initial Cache Load (Instant UI)
     const loadCache = async () => {
       try {
         const cached = await AsyncStorage.getItem(CACHE_KEY);
@@ -42,7 +37,6 @@ export const PetProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     loadCache();
 
-    // B. Real-time Subscription
     const q = query(
       collection(firestore, "pets"),
       where("isDeleted", "==", false),
@@ -61,12 +55,14 @@ export const PetProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (isMounted.current) {
         setPets(petList);
-        AsyncStorage.setItem(CACHE_KEY, JSON.stringify(petList)).catch(() => null);
+        
+        InteractionManager.runAfterInteractions(() => {
+          AsyncStorage.setItem(CACHE_KEY, JSON.stringify(petList)).catch(() => null);
+        });
       }
     }, (error) => {
-      // Graceful error handling for Guests if Rules are still Private
-      if (error.code === 'permission-denied' || error.message.includes("Missing or insufficient permissions")) {
-        console.warn("Guest View Blocked: Update Firestore Rules to 'allow read: if true;' to fix this.");
+      if (error.code === 'permission-denied') {
+        console.warn("Guest View Restricted: Pet list hidden by security rules.");
       } else {
         console.error("Pet Stream Sync Error:", error);
       }
@@ -74,9 +70,8 @@ export const PetProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => unsubscribe();
     
-  }, [user]); // Re-subscribes if user status changes (e.g. Guest -> Logged In)
+  }, [user?.uid]); 
 
-  // --- 3. ACTIONS ---
 
   const addPet = useCallback(async (petData: CreatePetDTO, imageFile: any): Promise<CloudinaryResponse> => {
     try {
@@ -107,7 +102,7 @@ export const PetProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e: any) {
       return { success: false, msg: e.message };
     }
-  }, [user, promoteToSeller, addPetPostId]);
+  }, [user?.uid, user?.role, promoteToSeller, addPetPostId]);
 
   const updatePet = useCallback(async (id: string, updates: Partial<PetType>, imageFile?: any): Promise<CloudinaryResponse> => {
     try {
@@ -150,7 +145,6 @@ export const PetProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     const isCurrentlyFav = pets[petIndex].favoredBy.includes(user.uid);
     
-    // Optimistic Update
     const optimisticPets = [...pets];
     if (isCurrentlyFav) {
       optimisticPets[petIndex].favoredBy = optimisticPets[petIndex].favoredBy.filter(id => id !== user.uid);
@@ -175,7 +169,7 @@ export const PetProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.error("Favorite Sync Error:", e);
     }
-  }, [pets, user, setUser]);
+  }, [pets, user?.uid]);
 
   return (
     <PetContext.Provider value={{ pets, addPet, updatePet, deletePet, toggleFavorite, markAsSold }}>
