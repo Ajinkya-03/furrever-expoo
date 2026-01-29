@@ -1,9 +1,10 @@
-import React, { useMemo, useRef, useCallback } from "react";
+import React, { useMemo, useRef, useCallback, memo } from "react";
 import {
   Platform,
   StyleSheet,
   TouchableOpacity,
   View,
+  InteractionManager, // Critical for crash prevention
 } from "react-native";
 import { BlurView } from 'expo-blur';
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
@@ -16,74 +17,65 @@ import { useChat } from "@/contexts/chatContext";
 import { useAuth } from "@/contexts/AuthContext";
 import Typo from "@/components/Typo";
 
-export default function CustomTabs({
-  state,
-  descriptors,
-  navigation,
-}: BottomTabBarProps) {
-  const { rooms } = useChat();
-  const { user } = useAuth();
-  
-  // Ref-based lock to prevent rapid double-tapping navigation crashes
-  const isNavigating = useRef(false);
+// 1. MEMOIZED ICON COMPONENT
+// This prevents every icon from re-rendering when you switch tabs, saving UI thread resources.
+const TabIcon = memo(({ routeName, isFocused, badgeCount }: { routeName: string, isFocused: boolean, badgeCount: number }) => {
+  const iconColor = isFocused ? colors.primary : colors.textLight;
+  const iconWeight = isFocused ? "fill" : "duotone";
+  const iconSize = verticalScale(24);
 
-  // Memoized unread count for efficiency (O(n) where n is number of rooms)
-  const unreadCount = useMemo(() => {
-    if (!user?.uid || !rooms) return 0;
-    return rooms.filter(room => {
-      // Robust date parsing for crash prevention
-      const lastRead = room.lastRead?.[user.uid]?.toDate?.() || new Date(0);
-      const updatedAt = room.updatedAt?.toDate 
-        ? room.updatedAt.toDate() 
-        : new Date(room.updatedAt || 0);
-      return updatedAt > lastRead;
-    }).length;
-  }, [rooms, user?.uid]);
-
-  const tabbarIcons: Record<string, (isFocused: boolean) => React.ReactNode> = {
-    index: (isFocused) => (
-      <House 
-        size={verticalScale(24)} 
-        weight={isFocused ? "fill" : "duotone"} 
-        color={isFocused ? colors.primary : colors.textLight} 
-      />
-    ),
-    favourite: (isFocused) => (
-      <Heart 
-        size={verticalScale(24)} 
-        weight={isFocused ? "fill" : "duotone"} 
-        color={isFocused ? colors.primary : colors.textLight} 
-      />
-    ),
-    inbox: (isFocused) => (
-      <View>
-        <Chat 
-          size={verticalScale(24)} 
-          weight={isFocused ? "fill" : "duotone"} 
-          color={isFocused ? colors.primary : colors.textLight} 
-        />
-        {unreadCount > 0 && (
-          <View style={styles.badge}>
-            <Typo color="white" size={10} fontWeight="800">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </Typo>
+  const renderIcon = () => {
+    switch (routeName) {
+      case "index": return <House size={iconSize} weight={iconWeight} color={iconColor} />;
+      case "favourite": return <Heart size={iconSize} weight={iconWeight} color={iconColor} />;
+      case "profile": return <User size={iconSize} weight={iconWeight} color={iconColor} />;
+      case "inbox":
+        return (
+          <View>
+            <Chat size={iconSize} weight={iconWeight} color={iconColor} />
+            {badgeCount > 0 && (
+              <View style={styles.badge}>
+                <Typo color="white" size={10} fontWeight="800">
+                  {badgeCount > 9 ? '9+' : badgeCount}
+                </Typo>
+              </View>
+            )}
           </View>
-        )}
-      </View>
-    ),
-    profile: (isFocused) => (
-      <User 
-        size={verticalScale(24)} 
-        weight={isFocused ? "fill" : "duotone"} 
-        color={isFocused ? colors.primary : colors.textLight} 
-      />
-    ),
+        );
+      default: return null;
+    }
   };
 
+  return (
+    <View style={[styles.pill, isFocused && styles.pillActive]}>
+      {renderIcon()}
+    </View>
+  );
+});
+
+export default function CustomTabs({ state, descriptors, navigation }: BottomTabBarProps) {
+  const { rooms } = useChat();
+  const { user } = useAuth();
+
+  // 2. NAVIGATION LOCK
+  // Prevents the user from spamming tabs and confusing the navigation stack
+  const isNavigating = useRef(false);
+
+  // 3. OPTIMIZED BADGE COUNT
+  // Only recalculates when the 'rooms' array actually changes reference or user changes
+  const unreadCount = useMemo(() => {
+    if (!user?.uid || !rooms) return 0;
+    return rooms.reduce((acc, room) => {
+      const lastRead = room.lastRead?.[user.uid]?.toDate?.() || new Date(0);
+      const updatedAt = room.updatedAt?.toDate ? room.updatedAt.toDate() : new Date(room.updatedAt || 0);
+      return updatedAt > lastRead ? acc + 1 : acc;
+    }, 0);
+  }, [rooms, user?.uid]);
+
+  // 4. CRASH-PROOF NAVIGATION HANDLER
   const handlePress = useCallback((route: any, isFocused: boolean) => {
     if (isNavigating.current) return;
-    
-    // Playful tactile feedback
+
     Haptics.selectionAsync();
 
     const event = navigation.emit({
@@ -94,34 +86,46 @@ export default function CustomTabs({
 
     if (!isFocused && !event.defaultPrevented) {
       isNavigating.current = true;
-      navigation.navigate(route.name, route.params);
-      
-      setTimeout(() => {
-        isNavigating.current = false;
-      }, 500);
+
+      // [CRASH FIX]: Wait for the current frame/animation to finish before mounting the new heavy screen.
+      // This allows the JS thread to clear up resources from the previous screen.
+      InteractionManager.runAfterInteractions(() => {
+        navigation.navigate(route.name, route.params);
+
+        // Short timeout to allow the new screen to mount smoothly
+        setTimeout(() => {
+          isNavigating.current = false;
+        }, 300);
+      });
     }
   }, [navigation]);
 
   return (
     <View style={styles.container}>
-      <BlurView 
-        intensity={Platform.OS === 'ios' ? 80 : 100} 
-        tint="light" 
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 80 : 100}
+        tint="light"
         style={styles.tabBar}
       >
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
-          
+
+          // Dynamic Route Check: Only render if we have an icon definition
+          // (Prevents blank tabs if you add hidden routes later)
+          if (!["index", "favourite", "inbox", "profile"].includes(route.name)) return null;
+
           return (
             <TouchableOpacity
-              key={route.name}
+              key={route.key}
               onPress={() => handlePress(route, isFocused)}
               activeOpacity={0.7}
               style={styles.tabBarItem}
             >
-              <View style={[styles.pill, isFocused && styles.pillActive]}>
-                {tabbarIcons[route.name]?.(isFocused)}
-              </View>
+              <TabIcon
+                routeName={route.name}
+                isFocused={isFocused}
+                badgeCount={route.name === 'inbox' ? unreadCount : 0}
+              />
             </TouchableOpacity>
           );
         })}
@@ -154,7 +158,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     width: "90%",
     height: verticalScale(68),
-    borderRadius: radius._40, 
+    borderRadius: radius._40,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.6)',
@@ -174,8 +178,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   pillActive: {
-    backgroundColor: colors.primarySoft, 
+    backgroundColor: colors.primary + '40',
+    borderRadius: radius._40,
   },
   badge: {
     position: 'absolute',

@@ -156,7 +156,7 @@ const Login = () => {
           </View>
           <View style={styles.footer}>
             <Typo size={15} color={colors.text}>Don't have an Account?</Typo>
-            <Pressable onPress={() => handleAction(async () => router.push("/(auth)/register"))}>
+            <Pressable onPress={() => handleAction(async () => router.replace("/(auth)/register"))}>
               <Typo size={15} fontWeight={"700"} color={colors.textLight}>Sign up</Typo>
             </Pressable>
           </View>

@@ -7,10 +7,6 @@ import { CertificateProvider } from "@/contexts/certificationContext"; // New Pr
 import { ChatProvider } from "@/contexts/chatContext";
 import VerificationGateway from "@/app/(modals)/verificationGateway";
 
-/**
- * StackLayout handles the actual navigation structure 
- * and renders global overlays like the VerificationGateway.
- */
 const StackLayout = () => {
   return (
     <>

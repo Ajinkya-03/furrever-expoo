@@ -1,3 +1,4 @@
+
 import React from "react";
 import { Tabs } from "expo-router";
 import CustomTabs from "@/components/CustomTabs";
@@ -12,5 +13,3 @@ export default function _layout() {
     </Tabs >
   );
 };
-
-

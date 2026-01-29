@@ -1,23 +1,41 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
-import { CertificateType, CertificateContextType } from '@/types';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import { colors } from '@/constants/themes';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
+import { CertificateType, CertificateContextType } from "@/types";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
+import { colors } from "@/constants/themes";
 
-const CertificateContext = createContext<CertificateContextType | undefined>(undefined);
+const CertificateContext = createContext<CertificateContextType | undefined>(
+  undefined
+);
 
-export const CertificateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const CertificateProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [loading, setLoading] = useState(false);
+  const lockRef = useRef(false);
 
-  const downloadPDF = async (cert: CertificateType) => {
+  const downloadPDF = useCallback(async (cert: CertificateType) => {
+    if (lockRef.current) return;
+    lockRef.current = true;
     setLoading(true);
-    
-    const date = cert.issuedAt?.toDate 
-      ? cert.issuedAt.toDate().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) 
+
+    const date = cert.issuedAt?.toDate
+      ? cert.issuedAt.toDate().toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
       : new Date().toLocaleDateString();
-    
+
     const html = `
-      <!DOCTYPE html>
+<!DOCTYPE html>
       <html>
         <head>
           <meta charset="utf-8">
@@ -68,16 +86,23 @@ export const CertificateProvider: React.FC<{ children: React.ReactNode }> = ({ c
     `;
 
     try {
-      const { uri } = await Print.printToFileAsync({ html, base64: false });
-      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, {
+        UTI: ".pdf",
+        mimeType: "application/pdf",
+      });
     } catch (e) {
       console.error("PDF Generation Error:", e);
     } finally {
       setLoading(false);
+      lockRef.current = false;
     }
-  };
+  }, []);
 
-  const value = useMemo(() => ({ loading, downloadPDF }), [loading]);
+  const value = useMemo(
+    () => ({ loading, downloadPDF }),
+    [loading, downloadPDF]
+  );
 
   return (
     <CertificateContext.Provider value={value}>
@@ -88,6 +113,7 @@ export const CertificateProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
 export const useCertificate = () => {
   const context = useContext(CertificateContext);
-  if (!context) throw new Error("useCertificate must be used within CertificateProvider");
+  if (!context)
+    throw new Error("useCertificate must be used within CertificateProvider");
   return context;
 };

@@ -1,7 +1,8 @@
+
 import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
-import { 
-  collection, addDoc, doc, updateDoc, serverTimestamp, 
-  onSnapshot, arrayUnion, query, where, getDocs, getDoc, or, writeBatch 
+import {
+  collection, addDoc, doc, updateDoc, serverTimestamp,
+  onSnapshot, arrayUnion, query, where, getDocs, getDoc, or, writeBatch
 } from "firebase/firestore";
 import { firestore } from "@/config/firebase";
 import { useAuth } from "./AuthContext";
@@ -30,14 +31,18 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         where("ownerId", "==", user.uid)
       )
     );
-    
+
     const unsubscribe = onSnapshot(q, (snap) => {
       const filteredApps = snap.docs
-        .map(d => ({ 
-          id: d.id, 
-          ...d.data(),
-          createdAt: d.data().createdAt?.toDate?.() || d.data().createdAt 
-        } as AdoptionType))
+        .map(d => {
+          const data = d.data();
+          return {
+            id: d.id,
+            ...data,
+            isRead: (data as any).isRead ?? false,
+            createdAt: data.createdAt?.toDate?.() || data.createdAt
+          } as AdoptionType;
+        })
         .filter(app => app.status !== 'cancelled')
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -54,8 +59,8 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLoading(true);
     try {
       const q = query(
-        collection(firestore, "adoptions"), 
-        where("petId", "==", pet.id), 
+        collection(firestore, "adoptions"),
+        where("petId", "==", pet.id),
         where("adopterId", "==", user.uid)
       );
       const snap = await getDocs(q);
@@ -81,9 +86,10 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         adopterName: user.name,
         ownerId: pet.ownerId,
         status: 'pending',
+        isRead: false,
         createdAt: serverTimestamp()
       });
-      
+
       return { success: true };
     } catch (e: any) {
       return { success: false, msg: e.message };
@@ -95,9 +101,9 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const cancelApplication = async (appId: string): Promise<ResponseType> => {
     setLoading(true);
     try {
-      await updateDoc(doc(firestore, "adoptions", appId), { 
+      await updateDoc(doc(firestore, "adoptions", appId), {
         status: 'cancelled',
-        updatedAt: serverTimestamp() 
+        updatedAt: serverTimestamp()
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return { success: true };
@@ -122,7 +128,7 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // 2. Prepare the Approved/Rejected update for THIS specific application
       const mainAppRef = doc(firestore, "adoptions", appId);
-      batch.update(mainAppRef, { 
+      batch.update(mainAppRef, {
         status,
         petBreed: petData?.breed || "Purebreed",
         petCategory: petData?.category || "Pet",
@@ -130,10 +136,8 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         petAge: petData?.age || "N/A",
         updatedAt: serverTimestamp()
       });
-      
+
       if (status === 'approved') {
-        // --- AUTO-REJECT LOGIC ---
-        // Find ALL other pending applications for this specific pet
         const otherAppsQuery = query(
           collection(firestore, "adoptions"),
           where("petId", "==", petId),
@@ -143,7 +147,6 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         otherAppsSnap.docs.forEach((otherDoc) => {
           if (otherDoc.id !== appId) {
-            // Automatically mark everyone else as rejected
             batch.update(doc(firestore, "adoptions", otherDoc.id), {
               status: 'rejected',
               updatedAt: serverTimestamp(),
@@ -151,26 +154,21 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             });
           }
         });
+        await markAsSold(petId, app.adopterId);
 
-        // 3. Mark the Pet as Sold in the database
-        await markAsSold(petId, app.adopterId); 
-        
-        // 4. Add Pet to Adopter's record
         const adopterUserRef = doc(firestore, "users", app.adopterId);
-        batch.update(adopterUserRef, { 
-          adoptedPets: arrayUnion(petId) 
+        batch.update(adopterUserRef, {
+          adoptedPets: arrayUnion(petId)
         });
       }
-      
-      // Execute the Batch
+
       await batch.commit();
 
-      // 5. Notify the adopter
       await addDoc(collection(firestore, "notifications"), {
         receiverId: app.adopterId,
         title: status === 'approved' ? "Adoption Approved! 🎉" : "Application Update",
         message: `Your request for ${app.petName} was ${status} by the owner.`,
-        isRead: false, 
+        isRead: false,
         createdAt: serverTimestamp()
       });
 
@@ -184,12 +182,12 @@ export const AdoptionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const value = useMemo(() => ({ 
-    applications, 
+  const value = useMemo(() => ({
+    applications,
     loading,
-    sendApplication, 
-    cancelApplication, 
-    updateApplicationStatus, 
+    sendApplication,
+    cancelApplication,
+    updateApplicationStatus,
   }), [applications, loading]);
 
   return <AdoptionContext.Provider value={value}>{children}</AdoptionContext.Provider>;

@@ -126,6 +126,7 @@ export type AdoptionType = {
   adopterName: string;
   ownerId: string;
   status: AdoptionStatus; 
+  isRead : boolean;
   createdAt: any;
   updatedAt?: any;
   petBreed?: string;
